@@ -1,0 +1,21 @@
+
+# Temporales (eliminar junto con los directorios)
+.codegraph/
+.opencode/
+openspec/
+opencode.json
+fuente/
+PLAN.md
+
+# Build output
+dist/
+
+# Environment
+.env
+
+# Installed instance (example)
+.pi/
+
+# Dependencies
+node_modules/
+

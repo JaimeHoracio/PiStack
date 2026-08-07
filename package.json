@@ -1,0 +1,51 @@
+{
+  "name": "@jaimehoracio/pistack",
+  "version": "0.0.1",
+  "description": "PiStack - Agent Harness para PI (Orquestador con machine states, 3 niveles, MCP, skills curadas)",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "pistack": "./dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "assets/",
+    "manifest.json"
+  ],
+  "scripts": {
+    "build": "bun build src/cli.ts --outdir dist --target bun",
+    "build:installer": "bun build src/pistack-installer.ts --outdir dist --target bun",
+    "generate-manifest": "bun run scripts/generate-manifest.ts",
+    "prepare": "npm run build && npm run build:installer && npm run generate-manifest",
+    "test:install": "bun run dist/cli.js install /tmp/pistack-test",
+    "test:uninstall": "bun run dist/cli.js uninstall /tmp/pistack-test"
+  },
+  "keywords": [
+    "pi",
+    "pi-coding-agent",
+    "agent-harness",
+    "orchestrator",
+    "mcp",
+    "codegraph",
+    "engram",
+    "superpowers",
+    "openspec"
+  ],
+  "author": "Jaime Horacio",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JaimeHoracio/PiStack.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JaimeHoracio/PiStack/issues"
+  },
+  "homepage": "https://github.com/JaimeHoracio/PiStack#readme",
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}

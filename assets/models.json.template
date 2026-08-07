@@ -1,0 +1,73 @@
+{
+  "providers": {
+    "ollama": {
+      "baseUrl": "${OLLAMA_BASE_URL}",
+      "api": "openai-completions",
+      "apiKey": "${OLLAMA_API_KEY}",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        {
+          "id": "${OLLAMA_MODEL_1}",
+          "name": "Ollama: ${OLLAMA_MODEL_1}",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 128000,
+          "maxTokens": 32000,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        },
+        {
+          "id": "${OLLAMA_MODEL_2}",
+          "name": "Ollama: ${OLLAMA_MODEL_2}",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 128000,
+          "maxTokens": 32000,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }
+      ]
+    },
+    "lmstudio": {
+      "baseUrl": "${LMSTUDIO_BASE_URL}",
+      "api": "openai-completions",
+      "apiKey": "${LMSTUDIO_API_KEY}",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        {
+          "id": "${LMSTUDIO_MODEL}",
+          "name": "LM Studio: ${LMSTUDIO_MODEL}",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 128000,
+          "maxTokens": 32000,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }
+      ]
+    },
+    "opencode-server": {
+      "baseUrl": "${OPENCODE_SERVER_BASE_URL}",
+      "api": "openai-completions",
+      "apiKey": "${OPENCODE_SERVER_API_KEY}",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        {
+          "id": "${OPENCODE_SERVER_MODEL}",
+          "name": "OpenCode Server: ${OPENCODE_SERVER_MODEL}",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 128000,
+          "maxTokens": 32000,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }
+      ]
+    }
+  }
+}
