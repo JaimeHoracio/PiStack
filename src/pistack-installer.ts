@@ -99,13 +99,18 @@ export function findPiDir(startDir: string = process.cwd()): string | null {
 }
 
 export function findProjectRoot(startDir: string = process.cwd()): string {
-  let current = resolve(startDir);
+  const start = resolve(startDir);
+  let current = start;
   while (true) {
+    const parent = dirname(current);
+    // El home y la raíz del sistema NUNCA son destinos válidos: si no hay
+    // proyecto en el camino, el directorio actual ES el destino.
+    if (parent === current || current === resolve(homedir()) || current === resolve("/")) {
+      return start;
+    }
     if (existsSync(join(current, ".pi")) || existsSync(join(current, ".git"))) {
       return current;
     }
-    const parent = dirname(current);
-    if (parent === current) return resolve(startDir);
     current = parent;
   }
 }
@@ -510,9 +515,11 @@ export async function installPiStack(
     return {
       success: false,
       message:
-        `No se puede instalar PiStack en ${root}. ` +
-        `Ejecutá el instalador dentro de un directorio de proyecto: ` +
-        `cd tu-proyecto && npx pistack install`,
+        `No se puede instalar PiStack en ${root} (directorio del sistema).\n` +
+        `Esto suele pasar cuando hay un .pi/ residual en tu home (de una instalación previa).\n` +
+        `  1. Eliminalo: rm -rf ${join(homedir(), ".pi")}\n` +
+        `  2. Ejecutá el instalador dentro de un directorio de proyecto:\n` +
+        `     cd tu-proyecto && npx pistack install`,
       details: {},
     };
   }
