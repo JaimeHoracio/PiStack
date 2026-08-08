@@ -1,6 +1,6 @@
 {
     "name": "pistack",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "description": "PiStack - Agent Harness para PI (Orquestador con machine states, 3 niveles, MCP, skills curadas)",
     "type": "module",
     "main": "dist/cli.js",
@@ -15,8 +15,9 @@
     "scripts": {
         "build": "bun build src/cli.ts --outdir dist --target bun",
         "build:installer": "bun build src/pistack-installer.ts --outdir dist --target bun",
+        "build:controller": "bun build assets/tools/pistack-controller/src/index.js --outfile assets/tools/pistack-controller/index.js --target node",
         "generate-manifest": "bun run scripts/generate-manifest.ts",
-        "prepare": "npm run build && npm run build:installer && npm run generate-manifest",
+        "prepare": "npm run build && npm run build:installer && npm run build:controller && npm run generate-manifest",
         "test:install": "bun run dist/cli.js install /tmp/pistack-test",
         "test:uninstall": "bun run dist/cli.js uninstall /tmp/pistack-test"
     },
@@ -46,6 +47,8 @@
     },
     "dependencies": {},
     "devDependencies": {
-        "bun-types": "latest"
+        "@modelcontextprotocol/server": "^2.0.0",
+        "bun-types": "latest",
+        "zod": "^4.4.3"
     }
 }

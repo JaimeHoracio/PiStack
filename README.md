@@ -1,4 +1,4 @@
-# PiStack v0.0.1
+# PiStack v0.0.4
 
 Agent Harness para [PI](https://pi.dev) — orquestador de código con machine states, clasificación por niveles, y gestión de herramientas MCP.
 
@@ -111,11 +111,11 @@ pi
 
 ### Niveles
 
-| Nivel | Cuándo | Flujo |
-|-------|--------|-------|
-| **0** | 1 archivo, sin API pública, sin deps nuevas, <15 líneas | CodeGraph → directo |
-| **0+1** | 1-2 archivos, <30 líneas | CodeGraph → usuario elige |
-| **1+** | API pública, refactor amplio, >30 líneas, cross-module | CodeGraph → OpenSpec → evaluar |
+| Nivel   | Cuándo                                                  | Flujo                          |
+| ------- | ------------------------------------------------------- | ------------------------------ |
+| **0**   | 1 archivo, sin API pública, sin deps nuevas, <15 líneas | CodeGraph → directo            |
+| **0+1** | 1-2 archivos, <30 líneas                                | CodeGraph → usuario elige      |
+| **1+**  | API pública, refactor amplio, >30 líneas, cross-module  | CodeGraph → OpenSpec → evaluar |
 
 ## Proveedores Locales (Opcional)
 
@@ -167,12 +167,12 @@ proyecto/
 
 ## Herramientas
 
-| Herramienta | Propósito | Localización |
-|-------------|-----------|--------------|
-| CodeGraph | Exploración de código | `.pi/tools/codegraph/bin/` |
-| Engram | Memoria persistente | `.pi/tools/engram/bin/` |
-| Context7 | Documentación de librerías | Remoto (MCP) |
-| Controller | Machine states | `.pi/tools/pistack-controller/` |
+| Herramienta | Propósito                  | Localización                    |
+| ----------- | -------------------------- | ------------------------------- |
+| CodeGraph   | Exploración de código      | `.pi/tools/codegraph/bin/`      |
+| Engram      | Memoria persistente        | `.pi/tools/engram/bin/`         |
+| Context7    | Documentación de librerías | Remoto (MCP)                    |
+| Controller  | Machine states             | `.pi/tools/pistack-controller/` |
 
 ## Seguridad
 
@@ -207,10 +207,11 @@ PiStack/
 ### Publicar en npm (mantenedores)
 
 ```bash
-bun run generate-manifest   # regenera manifest.json (toma la versión de package.json)
-npm version patch           # o minor/major
-bun run build
-bun run build:installer
+bun run build              # instalador CLI
+bun run build:installer    # módulo de instalación
+bun run build:controller   # bundlea assets/tools/pistack-controller (src/ → index.js autónomo)
+bun run generate-manifest  # regenera manifest.json (toma la versión de package.json)
+npm version patch          # o minor/major
 git add -A && git commit -m "chore: release vX.Y.Z"
 git tag vX.Y.Z
 git push && git push --tags
@@ -218,5 +219,4 @@ npm publish --access public
 ```
 
 > **Nota:** la versión se centraliza en `package.json`. Regenerá el manifest SIEMPRE antes de publicar.
-> El paquete legacy `@jaimehoracio/pistack@0.0.1` quedó publicado en npm; deprecarlo es opcional:
-> `npm deprecate @jaimehoracio/pistack@0.0.1 "Renombrado a pistack"`
+> El controller se distribuye como **bundle autónomo** (`index.js` con las deps embebidas) — nunca publiques sin correr `build:controller`, o el MCP fallará con `ERR_MODULE_NOT_FOUND`.

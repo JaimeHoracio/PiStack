@@ -408,8 +408,14 @@ export function installExtensionsComponent(piDir: PiStackPaths): ComponentDetail
 
 export function installControllerComponent(piDir: PiStackPaths): ComponentDetail {
   try {
-    copyDirRecursive(join(ASSETS_DIR, "tools", "pistack-controller"), join(piDir.tools, "pistack-controller"), true);
-    return { success: true, message: "Controller MCP instalado" };
+    const srcDir = join(ASSETS_DIR, "tools", "pistack-controller");
+    const destDir = join(piDir.tools, "pistack-controller");
+    // Copia solo el bundle autónomo (index.js) y su package.json.
+    // NO se copia src/ (fuente) ni node_modules: el bundle embebe las deps.
+    mkdirSync(destDir, { recursive: true });
+    copyFileSync(join(srcDir, "index.js"), join(destDir, "index.js"));
+    copyFileSync(join(srcDir, "package.json"), join(destDir, "package.json"));
+    return { success: true, message: "Controller MCP instalado (bundle autónomo)" };
   } catch (e) {
     return { success: false, message: `Error instalando controller: ${e}` };
   }

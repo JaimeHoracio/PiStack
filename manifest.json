@@ -1,13 +1,13 @@
 {
-    "version": "0.0.3",
+    "version": "0.0.4",
     "repo": "JaimeHoracio/PiStack",
-    "tag": "v0.0.3",
+    "tag": "v0.0.4",
     "agents": [
         {
             "name": "pistack",
             "file": "assets/AGENTS.md",
             "description": "Orquestador PiStack para PI - 3 niveles, controller MCP, skills curadas, seguridad, robustez",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "817a0b56810b9cc727fc8ba8eef3f5f506c2af461575c93fa37c0194ce377a40"
         }
     ],
@@ -16,7 +16,7 @@
             "name": "commands",
             "file": "assets/extensions/commands.ts",
             "description": "Comando PiStack: commands",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "7fcb9091ac0851c28029ae2ee9302cfde280e4517f9a5fe3958702f8dd10dcfa"
         }
     ],
@@ -25,133 +25,133 @@
             "name": "using-git-worktrees",
             "file": "assets/skills/using-git-worktrees/SKILL.md",
             "description": "Skill: using-git-worktrees",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "33433c24f753d566cde16c0931f70d746b6b0cb4d1f3daaa619e928b009e4fc9"
         },
         {
             "name": "writing-skills",
             "file": "assets/skills/writing-skills/SKILL.md",
             "description": "Skill: writing-skills",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "7f74ffe049283803640d78f8c9ac1ea5f5e626dedb885ecff29a87c5b5d41598"
         },
         {
             "name": "openspec-apply-change",
             "file": "assets/skills/openspec-apply-change/SKILL.md",
             "description": "Skill: openspec-apply-change",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "31c1313c3de4616a07efd89306c4c058175d018f42d4381cc7da7030fd03ba30"
         },
         {
             "name": "review",
             "file": "assets/skills/review/SKILL.md",
             "description": "Skill: review",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "1486a2075f0c29b8119c3bef68e9f367cf33ff46cdddd414ad160ce54119c515"
         },
         {
             "name": "openspec-archive-change",
             "file": "assets/skills/openspec-archive-change/SKILL.md",
             "description": "Skill: openspec-archive-change",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "5bf65d1848457bd57be1d21707e55fe6746cdee33bce2f32f12d87661b6aa3a4"
         },
         {
             "name": "subagent-driven-development",
             "file": "assets/skills/subagent-driven-development/SKILL.md",
             "description": "Skill: subagent-driven-development",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "c3150ccb1030c3ed29121dc5a3963908847802f2fbf8af933b2999d40ba7b953"
         },
         {
             "name": "openspec-propose",
             "file": "assets/skills/openspec-propose/SKILL.md",
             "description": "Skill: openspec-propose",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "3306b21ba9cb8c1611e8ba335126982f3767f7d317b5ed506c57a14c5f88b263"
         },
         {
             "name": "execution-mode-evaluation",
             "file": "assets/skills/execution-mode-evaluation/SKILL.md",
             "description": "Skill: execution-mode-evaluation",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "a9ab1ed3769b9afde4029f8f31bc6678afc9717c1f68e79545147062af8fcfa2"
         },
         {
             "name": "verification-before-completion",
             "file": "assets/skills/verification-before-completion/SKILL.md",
             "description": "Skill: verification-before-completion",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "8ba3991726bd83a9ccdff71000be53b01287c457e634516655a662262b17449a"
         },
         {
             "name": "dispatching-parallel-agents",
             "file": "assets/skills/dispatching-parallel-agents/SKILL.md",
             "description": "Skill: dispatching-parallel-agents",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "281edf0c38f358497c7e2066fa8217a2ba3e2a39b4205c4af0c41d328fc035a1"
         },
         {
             "name": "executing-plans",
             "file": "assets/skills/executing-plans/SKILL.md",
             "description": "Skill: executing-plans",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "5b6ec125c94c5be4232c6c5352bdd9f33dadff931d32e4543d1d21b4ca7c016c"
         },
         {
             "name": "systematic-debugging",
             "file": "assets/skills/systematic-debugging/SKILL.md",
             "description": "Skill: systematic-debugging",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "0622ab23f61b8d5ade9f3cfcd8a377c19606b8dddde9eed943fe61080f2278b9"
         },
         {
             "name": "writing-plans",
             "file": "assets/skills/writing-plans/SKILL.md",
             "description": "Skill: writing-plans",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "2b8703520cc5bd94e7499b369088cfe3ce03b8e587cec60cbda3db9f4a7bf3ca"
         },
         {
             "name": "requesting-code-review",
             "file": "assets/skills/requesting-code-review/SKILL.md",
             "description": "Skill: requesting-code-review",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "136f8e6657c166d362cc91a2c936cbc35d656209e5fdb5b5559cf1f112c26f9e"
         },
         {
             "name": "thinking",
             "file": "assets/skills/thinking/SKILL.md",
             "description": "Skill: thinking",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "210bad85c9320b5359ed9ef3dbebd45a43b2044a8eeaa5274f79efd13ce34243"
         },
         {
             "name": "tdd",
             "file": "assets/skills/tdd/SKILL.md",
             "description": "Skill: tdd",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "7eacd8ee81dc5c0b85065c0392e37ee10314661f7edb59dd8e70a9e0dae8f371"
         },
         {
             "name": "finishing-a-development-branch",
             "file": "assets/skills/finishing-a-development-branch/SKILL.md",
             "description": "Skill: finishing-a-development-branch",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "c13c1cc5e50f9c172055b6ef0b84717fd2c84f44d5aa25b938c2cb2b5d57c597"
         },
         {
             "name": "using-superpowers",
             "file": "assets/skills/using-superpowers/SKILL.md",
             "description": "Skill: using-superpowers",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "fba542003aa788b5edb4ae2d1135773a1dde8111d1dd60378e2f61b6695d46fc"
         },
         {
             "name": "receiving-code-review",
             "file": "assets/skills/receiving-code-review/SKILL.md",
             "description": "Skill: receiving-code-review",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "0a5780e8a41539d15428114b7c46f36670acc16aba0db3348d36be1175433872"
         }
     ],
@@ -160,8 +160,8 @@
             "name": "pistack-controller",
             "file": "assets/tools/pistack-controller/",
             "description": "MCP Server: pistack-controller",
-            "version": "0.0.3",
-            "sha256": "00e53bc135d21818e73b032bd16064e6f0e1321b09798cc91cc6f462d1028602"
+            "version": "0.0.4",
+            "sha256": "48e750d4e08fc41c4b4429ea64e9bd2123c422c37a9825ec254579adb7208cfb"
         }
     ],
     "models": [
@@ -169,7 +169,7 @@
             "name": "models-template",
             "file": "assets/models.json.template",
             "description": "Template para proveedores locales (Ollama, LM Studio, OpenCode Server) con variables de entorno",
-            "version": "0.0.3",
+            "version": "0.0.4",
             "sha256": "4017f0eddea42e802e1a199c3e565d58650dc53dac4b660d05228e7450ca2291"
         }
     ]
