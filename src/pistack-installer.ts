@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, rmSync, readdirSync, statSync } from "fs";
+import { homedir } from "os";
 import { createHash } from "crypto";
 import { join, resolve, dirname, relative } from "path";
 import { fileURLToPath } from "url";
+import { $ } from "bun";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(__dirname, "..");
@@ -47,6 +49,41 @@ export interface Lockfile {
   models: Record<string, { version: string; installedAt: string; sha256: string }>;
 }
 
+export type ComponentDetail = { success: boolean; message: string };
+
+export type ComponentName =
+  | "pi-mcp-adapter"
+  | "codegraph"
+  | "engram"
+  | "agents"
+  | "skills"
+  | "extensions"
+  | "controller"
+  | "mcp-config"
+  | "models";
+
+export const COMPONENTS: ComponentName[] = [
+  "pi-mcp-adapter",
+  "codegraph",
+  "engram",
+  "agents",
+  "skills",
+  "extensions",
+  "controller",
+  "mcp-config",
+  "models",
+];
+
+export function validateComponents(tools: string[]): ComponentName[] | null {
+  const valid = new Set<string>(COMPONENTS);
+  for (const t of tools) {
+    if (!valid.has(t)) return null;
+  }
+  return tools as ComponentName[];
+}
+
+// ─── Path helpers ─────────────────────────────────────────────────────────────
+
 export function findPiDir(startDir: string = process.cwd()): string | null {
   let current = resolve(startDir);
   while (true) {
@@ -71,6 +108,15 @@ export function findProjectRoot(startDir: string = process.cwd()): string {
     if (parent === current) return resolve(startDir);
     current = parent;
   }
+}
+
+/**
+ * Valida que el destino no sea el home directory ni la raíz del sistema.
+ * CodeGraph rechaza inicializarse ahí y es un destino inválido para .pi/.
+ */
+export function isValidInstallRoot(root: string): boolean {
+  const homeDir = resolve(homedir());
+  return root !== homeDir && root !== resolve("/");
 }
 
 export function ensurePiPaths(piDir: string): PiStackPaths {
@@ -134,6 +180,8 @@ function walkForHash(root: string, current: string, lines: string[]): void {
   }
 }
 
+// ─── Lockfile helpers ─────────────────────────────────────────────────────────
+
 function readLockfile(piDir: string): Lockfile | null {
   const lockPath = join(piDir, "pistack-lock.json");
   if (!existsSync(lockPath)) return null;
@@ -179,6 +227,26 @@ function upsertLockfile(
   writeLockfile(paths.root, existing);
 }
 
+/**
+ * Remueve una entrada del mcp.json del proyecto (ej: desinstalar codegraph
+ * quita su server de mcpServers pero deja el resto de la config intacta).
+ */
+function removeMcpEntry(piDir: string, name: string): void {
+  const mcpPath = join(piDir, "mcp.json");
+  if (!existsSync(mcpPath)) return;
+  try {
+    const config = JSON.parse(readFileSync(mcpPath, "utf-8"));
+    if (config.mcpServers && config.mcpServers[name]) {
+      delete config.mcpServers[name];
+      writeFileSync(mcpPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    }
+  } catch {
+    // mcp.json corrupto — no es fatal
+  }
+}
+
+// ─── Downloads ────────────────────────────────────────────────────────────────
+
 async function downloadFile(url: string, dest: string, maxSize: number = 100_000_000): Promise<void> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Failed to download ${url}: ${response.statusText}`);
@@ -187,70 +255,11 @@ async function downloadFile(url: string, dest: string, maxSize: number = 100_000
   writeFileSync(dest, Buffer.from(arrayBuffer));
 }
 
-async function installCodeGraph(toolsDir: string): Promise<{ success: boolean; message: string }> {
-  const cgToolDir = join(toolsDir, "codegraph");
-  const cgBinDir = join(cgToolDir, "bin");
-  if (!existsSync(cgBinDir)) mkdirSync(cgBinDir, { recursive: true });
+// ─── Install por componente ───────────────────────────────────────────────────
 
-  const localBin = join(cgBinDir, "codegraph");
-  if (existsSync(localBin)) {
-    return { success: true, message: "CodeGraph ya instalado localmente" };
-  }
-
+export async function installPiMcpAdapterComponent(): Promise<ComponentDetail> {
   try {
-    const tagResponse = await fetch("https://api.github.com/repos/colbymchenry/codegraph/releases/latest");
-    const tagData = await tagResponse.json();
-    const tag = tagData.tag_name || "v1.5.0";
-
-    const url = `https://github.com/colbymchenry/codegraph/releases/download/${tag}/codegraph-linux-x64.tar.gz`;
-    const tarPath = join(cgToolDir, "codegraph.tar.gz");
-
-    await downloadFile(url, tarPath, 200_000_000);
-
-    const { $ } = await import("bun");
-    await $`tar -xzf ${tarPath} -C ${cgToolDir} && mv ${cgToolDir}/codegraph-linux-x64/* ${cgToolDir}/ && rm -rf ${cgToolDir}/codegraph-linux-x64 ${tarPath}`.cwd(cgToolDir);
-    await $`chmod +x ${localBin}`;
-
-    return { success: true, message: `CodeGraph ${tag} instalado en ${cgBinDir}` };
-  } catch (e) {
-    return { success: false, message: `Error instalando CodeGraph: ${e}` };
-  }
-}
-
-async function installEngram(toolsDir: string): Promise<{ success: boolean; message: string }> {
-  const egToolDir = join(toolsDir, "engram");
-  const egBinDir = join(egToolDir, "bin");
-  if (!existsSync(egBinDir)) mkdirSync(egBinDir, { recursive: true });
-
-  const localBin = join(egBinDir, "engram");
-  if (existsSync(localBin)) {
-    return { success: true, message: "Engram ya instalado localmente" };
-  }
-
-  try {
-    const tagResponse = await fetch("https://api.github.com/repos/Gentleman-Programming/engram/releases/latest");
-    const tagData = await tagResponse.json();
-    const tag = tagData.tag_name || "v1.20.0";
-    const versionNum = tag.replace("v", "");
-
-    const url = `https://github.com/Gentleman-Programming/engram/releases/download/${tag}/engram_${versionNum}_linux_amd64.tar.gz`;
-    const tarPath = join(egToolDir, "engram.tar.gz");
-
-    await downloadFile(url, tarPath, 50_000_000);
-
-    const { $ } = await import("bun");
-    await $`tar -xzf ${tarPath} -C ${egToolDir} && mv ${egToolDir}/engram ${localBin} && rm ${tarPath}`.cwd(egToolDir);
-    await $`chmod +x ${localBin}`;
-
-    return { success: true, message: `Engram ${tag} instalado en ${egBinDir}` };
-  } catch (e) {
-    return { success: false, message: `Error instalando Engram: ${e}` };
-  }
-}
-
-async function installPiMcpAdapter(): Promise<{ success: boolean; message: string }> {
-  try {
-    const { $ } = await import("bun");
+    
     await $`pi install npm:pi-mcp-adapter`.quiet();
     return { success: true, message: "pi-mcp-adapter instalado" };
   } catch (e) {
@@ -258,49 +267,90 @@ async function installPiMcpAdapter(): Promise<{ success: boolean; message: strin
   }
 }
 
-export async function installPiStack(projectRoot?: string): Promise<{
-  success: boolean;
-  message: string;
-  details: Record<string, { success: boolean; message: string }>;
-}> {
-  const root = projectRoot ?? findProjectRoot();
-  const piDir = createPiDir(root);
-  const manifest = await loadManifest();
+export async function installCodeGraphComponent(toolsDir: string, projectRoot: string): Promise<ComponentDetail> {
+  const cgToolDir = join(toolsDir, "codegraph");
+  const cgBinDir = join(cgToolDir, "bin");
+  if (!existsSync(cgBinDir)) mkdirSync(cgBinDir, { recursive: true });
 
-  console.log(`🚀 Instalando PiStack v${manifest.version} en ${root}`);
-
-  const details: Record<string, { success: boolean; message: string }> = {};
-
-  // 1. Verificar/instalar PI
-  try {
-    const { $ } = await import("bun");
-    const piVersion = await $`pi --version`.text();
-    details.pi = { success: true, message: `PI detectado: ${piVersion.trim()}` };
-  } catch {
-    details.pi = { success: false, message: "PI no encontrado. Instalá PI primero." };
-    return { success: false, message: "PI no instalado", details };
+  const localBin = join(cgBinDir, "codegraph");
+  if (existsSync(localBin)) {
+    try {
+      
+      await $`${localBin} --version`.quiet();
+    } catch {
+      try { rmSync(cgBinDir, { recursive: true, force: true }); } catch {}
+    }
   }
 
-  // 2. Instalar pi-mcp-adapter
-  details.piMcpAdapter = await installPiMcpAdapter();
+  if (!existsSync(localBin)) {
+    try {
+      const tagResponse = await fetch("https://api.github.com/repos/colbymchenry/codegraph/releases/latest");
+      const tagData = await tagResponse.json();
+      const tag = tagData.tag_name || "v1.5.0";
 
-  // 3. Instalar CodeGraph
-  details.codegraph = await installCodeGraph(piDir.tools);
+      const url = `https://github.com/colbymchenry/codegraph/releases/download/${tag}/codegraph-linux-x64.tar.gz`;
+      const tarPath = join(cgToolDir, "codegraph.tar.gz");
 
-  // 4. Inicializar CodeGraph
+      await downloadFile(url, tarPath, 200_000_000);
+
+      
+      await $`tar -xzf ${tarPath} -C ${cgToolDir} && mv ${cgToolDir}/codegraph-linux-x64/* ${cgToolDir}/ && rm -rf ${cgToolDir}/codegraph-linux-x64 ${tarPath}`.cwd(cgToolDir);
+      await $`chmod +x ${localBin}`;
+    } catch (e) {
+      return { success: false, message: `Error instalando CodeGraph: ${e}` };
+    }
+  }
+
+  // Inicializar el índice en el proyecto
   try {
-    const { $ } = await import("bun");
-    const cgBin = join(piDir.tools, "codegraph", "bin", "codegraph");
-    await $`${cgBin} init -i`.cwd(root);
-    details.codegraphInit = { success: true, message: "CodeGraph inicializado" };
+    
+    await $`${localBin} init -i`.cwd(projectRoot);
   } catch (e) {
-    details.codegraphInit = { success: false, message: `Error inicializando CodeGraph: ${e}` };
+    return { success: false, message: `CodeGraph descargado pero init falló: ${e}` };
   }
 
-  // 5. Instalar Engram
-  details.engram = await installEngram(piDir.tools);
+  return { success: true, message: "CodeGraph instalado e inicializado (.pi/tools/codegraph)" };
+}
 
-  // 6. Copiar AGENTS.md
+export async function installEngramComponent(toolsDir: string): Promise<ComponentDetail> {
+  const egToolDir = join(toolsDir, "engram");
+  const egBinDir = join(egToolDir, "bin");
+  if (!existsSync(egBinDir)) mkdirSync(egBinDir, { recursive: true });
+
+  const localBin = join(egBinDir, "engram");
+  if (existsSync(localBin)) {
+    try {
+      
+      await $`${localBin} --version`.quiet();
+    } catch {
+      try { rmSync(egBinDir, { recursive: true, force: true }); } catch {}
+    }
+  }
+
+  if (!existsSync(localBin)) {
+    try {
+      const tagResponse = await fetch("https://api.github.com/repos/Gentleman-Programming/engram/releases/latest");
+      const tagData = await tagResponse.json();
+      const tag = tagData.tag_name || "v1.20.0";
+      const versionNum = tag.replace("v", "");
+
+      const url = `https://github.com/Gentleman-Programming/engram/releases/download/${tag}/engram_${versionNum}_linux_amd64.tar.gz`;
+      const tarPath = join(egToolDir, "engram.tar.gz");
+
+      await downloadFile(url, tarPath, 50_000_000);
+
+      
+      await $`tar -xzf ${tarPath} -C ${egToolDir} && mv ${egToolDir}/engram ${localBin} && rm ${tarPath}`.cwd(egToolDir);
+      await $`chmod +x ${localBin}`;
+    } catch (e) {
+      return { success: false, message: `Error instalando Engram: ${e}` };
+    }
+  }
+
+  return { success: true, message: "Engram instalado (.pi/tools/engram)" };
+}
+
+export function installAgentsComponent(piDir: PiStackPaths, manifest: Manifest): ComponentDetail {
   try {
     copyFileSync(join(ASSETS_DIR, "AGENTS.md"), join(piDir.root, "AGENTS.md"));
     const content = readFileSync(join(ASSETS_DIR, "AGENTS.md"), "utf-8");
@@ -312,12 +362,13 @@ export async function installPiStack(projectRoot?: string): Promise<{
       version: manifest.version,
       sha256: hash,
     }, manifest, hash);
-    details.agents = { success: true, message: "AGENTS.md instalado" };
+    return { success: true, message: "AGENTS.md instalado" };
   } catch (e) {
-    details.agents = { success: false, message: `Error copiando AGENTS.md: ${e}` };
+    return { success: false, message: `Error copiando AGENTS.md: ${e}` };
   }
+}
 
-  // 7. Copiar skills
+export function installSkillsComponent(piDir: PiStackPaths, manifest: Manifest): ComponentDetail {
   try {
     copyDirRecursive(join(ASSETS_DIR, "skills"), join(piDir.root, "skills"));
     const skillsDir = join(ASSETS_DIR, "skills");
@@ -335,28 +386,31 @@ export async function installPiStack(projectRoot?: string): Promise<{
         }, manifest, hash);
       }
     }
-    details.skills = { success: true, message: `${readdirSync(skillsDir).length} skills instaladas` };
+    return { success: true, message: `${readdirSync(skillsDir).length} skills instaladas` };
   } catch (e) {
-    details.skills = { success: false, message: `Error instalando skills: ${e}` };
+    return { success: false, message: `Error instalando skills: ${e}` };
   }
+}
 
-  // 8. Copiar extensions
+export function installExtensionsComponent(piDir: PiStackPaths): ComponentDetail {
   try {
     copyDirRecursive(join(ASSETS_DIR, "extensions"), join(piDir.root, "extensions"));
-    details.extensions = { success: true, message: "Extensions instaladas" };
+    return { success: true, message: "Extensions instaladas" };
   } catch (e) {
-    details.extensions = { success: false, message: `Error instalando extensions: ${e}` };
+    return { success: false, message: `Error instalando extensions: ${e}` };
   }
+}
 
-  // 9. Copiar controller MCP
+export function installControllerComponent(piDir: PiStackPaths): ComponentDetail {
   try {
     copyDirRecursive(join(ASSETS_DIR, "tools", "pistack-controller"), join(piDir.tools, "pistack-controller"), true);
-    details.controller = { success: true, message: "Controller MCP instalado" };
+    return { success: true, message: "Controller MCP instalado" };
   } catch (e) {
-    details.controller = { success: false, message: `Error instalando controller: ${e}` };
+    return { success: false, message: `Error instalando controller: ${e}` };
   }
+}
 
-  // 10. Crear mcp.json
+export function installMcpConfigComponent(piDir: PiStackPaths, manifest: Manifest): ComponentDetail {
   try {
     const mcpConfig = {
       settings: { toolPrefix: "none" },
@@ -394,12 +448,13 @@ export async function installPiStack(projectRoot?: string): Promise<{
       version: manifest.version,
       sha256: mcpHash,
     }, manifest, mcpHash);
-    details.mcpConfig = { success: true, message: ".pi/mcp.json creado" };
+    return { success: true, message: ".pi/mcp.json creado" };
   } catch (e) {
-    details.mcpConfig = { success: false, message: `Error creando mcp.json: ${e}` };
+    return { success: false, message: `Error creando mcp.json: ${e}` };
   }
+}
 
-  // 11. Crear models.json desde template
+export function installModelsComponent(piDir: PiStackPaths, manifest: Manifest): ComponentDetail {
   try {
     const templatePath = join(ASSETS_DIR, "models.json.template");
     const destPath = join(piDir.root, "models.json");
@@ -414,12 +469,90 @@ export async function installPiStack(projectRoot?: string): Promise<{
         version: manifest.version,
         sha256: hash,
       }, manifest, hash);
-      details.models = { success: true, message: ".pi/models.json creado (configurar variables en .env)" };
-    } else if (existsSync(destPath)) {
-      details.models = { success: true, message: ".pi/models.json ya existe, se omite" };
+      return { success: true, message: ".pi/models.json creado (configurar variables en .env)" };
     }
+    return { success: true, message: ".pi/models.json ya existe, se omite" };
   } catch (e) {
-    details.models = { success: false, message: `Error creando models.json: ${e}` };
+    return { success: false, message: `Error creando models.json: ${e}` };
+  }
+}
+
+export async function installComponent(
+  name: ComponentName,
+  piDir: PiStackPaths,
+  manifest: Manifest,
+  projectRoot: string
+): Promise<ComponentDetail> {
+  switch (name) {
+    case "pi-mcp-adapter": return installPiMcpAdapterComponent();
+    case "codegraph": return installCodeGraphComponent(piDir.tools, projectRoot);
+    case "engram": return installEngramComponent(piDir.tools);
+    case "agents": return installAgentsComponent(piDir, manifest);
+    case "skills": return installSkillsComponent(piDir, manifest);
+    case "extensions": return installExtensionsComponent(piDir);
+    case "controller": return installControllerComponent(piDir);
+    case "mcp-config": return installMcpConfigComponent(piDir, manifest);
+    case "models": return installModelsComponent(piDir, manifest);
+  }
+}
+
+export async function installPiStack(
+  projectRoot?: string,
+  tools?: string[]
+): Promise<{
+  success: boolean;
+  message: string;
+  details: Record<string, ComponentDetail>;
+}> {
+  const root = projectRoot ?? findProjectRoot();
+
+  if (!isValidInstallRoot(root)) {
+    return {
+      success: false,
+      message:
+        `No se puede instalar PiStack en ${root}. ` +
+        `Ejecutá el instalador dentro de un directorio de proyecto: ` +
+        `cd tu-proyecto && npx pistack install`,
+      details: {},
+    };
+  }
+
+  let selected: ComponentName[];
+  if (tools && tools.length > 0) {
+    const valid = validateComponents(tools);
+    if (valid === null) {
+      return {
+        success: false,
+        message: `Componente(s) inválido(s): ${tools.join(", ")}. Válidos: ${COMPONENTS.join(", ")}`,
+        details: {},
+      };
+    }
+    selected = valid;
+  } else {
+    selected = [...COMPONENTS];
+  }
+
+  const piDir = createPiDir(root);
+  const manifest = await loadManifest();
+
+  console.log(`🚀 Instalando PiStack v${manifest.version} en ${root}`);
+  console.log(`   Componentes: ${selected.join(", ")}\n`);
+
+  const details: Record<string, ComponentDetail> = {};
+
+  // 1. Verificar PI (precondición de todo el stack)
+  try {
+    
+    const piVersion = await $`pi --version`.text();
+    details.pi = { success: true, message: `PI detectado: ${piVersion.trim()}` };
+  } catch {
+    details.pi = { success: false, message: "PI no encontrado. Instalá PI primero." };
+    return { success: false, message: "PI no instalado", details };
+  }
+
+  // 2. Instalar componentes seleccionados
+  for (const name of selected) {
+    details[name] = await installComponent(name, piDir, manifest, root);
   }
 
   const allSuccess = Object.values(details).every(d => d.success);
@@ -430,7 +563,124 @@ export async function installPiStack(projectRoot?: string): Promise<{
   };
 }
 
-export async function uninstallPiStack(projectRoot?: string): Promise<{
+// ─── Uninstall por componente ─────────────────────────────────────────────────
+
+export function uninstallAgentsComponent(root: string): string[] {
+  const removed: string[] = [];
+  const p = join(root, ".pi", "AGENTS.md");
+  if (existsSync(p)) {
+    rmSync(p, { force: true });
+    removed.push(".pi/AGENTS.md");
+  }
+  return removed;
+}
+
+export function uninstallSkillsComponent(root: string): string[] {
+  const removed: string[] = [];
+  const p = join(root, ".pi", "skills");
+  if (existsSync(p)) {
+    rmSync(p, { recursive: true, force: true });
+    removed.push(".pi/skills/");
+  }
+  return removed;
+}
+
+export function uninstallExtensionsComponent(root: string): string[] {
+  const removed: string[] = [];
+  const p = join(root, ".pi", "extensions");
+  if (existsSync(p)) {
+    rmSync(p, { recursive: true, force: true });
+    removed.push(".pi/extensions/");
+  }
+  return removed;
+}
+
+export function uninstallControllerComponent(root: string): string[] {
+  const removed: string[] = [];
+  const p = join(root, ".pi", "tools", "pistack-controller");
+  if (existsSync(p)) {
+    rmSync(p, { recursive: true, force: true });
+    removed.push(".pi/tools/pistack-controller/");
+  }
+  removeMcpEntry(join(root, ".pi"), "pistack-controller");
+  return removed;
+}
+
+export function uninstallCodeGraphComponent(root: string): string[] {
+  const removed: string[] = [];
+  const toolDir = join(root, ".pi", "tools", "codegraph");
+  if (existsSync(toolDir)) {
+    rmSync(toolDir, { recursive: true, force: true });
+    removed.push(".pi/tools/codegraph/");
+  }
+  const indexDir = join(root, ".codegraph");
+  if (existsSync(indexDir)) {
+    rmSync(indexDir, { recursive: true, force: true });
+    removed.push(".codegraph/");
+  }
+  removeMcpEntry(join(root, ".pi"), "codegraph");
+  return removed;
+}
+
+export function uninstallEngramComponent(root: string): string[] {
+  const removed: string[] = [];
+  const p = join(root, ".pi", "tools", "engram");
+  if (existsSync(p)) {
+    rmSync(p, { recursive: true, force: true });
+    removed.push(".pi/tools/engram/");
+  }
+  removeMcpEntry(join(root, ".pi"), "engram");
+  return removed;
+}
+
+export function uninstallMcpConfigComponent(root: string): string[] {
+  const removed: string[] = [];
+  const p = join(root, ".pi", "mcp.json");
+  if (existsSync(p)) {
+    rmSync(p, { force: true });
+    removed.push(".pi/mcp.json");
+  }
+  return removed;
+}
+
+export function uninstallModelsComponent(root: string): string[] {
+  const removed: string[] = [];
+  const p = join(root, ".pi", "models.json");
+  if (existsSync(p)) {
+    rmSync(p, { force: true });
+    removed.push(".pi/models.json");
+  }
+  return removed;
+}
+
+export async function uninstallPiMcpAdapterComponent(): Promise<string[]> {
+  try {
+    
+    await $`pi uninstall npm:pi-mcp-adapter`.quiet();
+    return ["pi-mcp-adapter"];
+  } catch {
+    return [];
+  }
+}
+
+export async function uninstallComponent(name: ComponentName, root: string): Promise<string[]> {
+  switch (name) {
+    case "pi-mcp-adapter": return uninstallPiMcpAdapterComponent();
+    case "codegraph": return uninstallCodeGraphComponent(root);
+    case "engram": return uninstallEngramComponent(root);
+    case "agents": return uninstallAgentsComponent(root);
+    case "skills": return uninstallSkillsComponent(root);
+    case "extensions": return uninstallExtensionsComponent(root);
+    case "controller": return uninstallControllerComponent(root);
+    case "mcp-config": return uninstallMcpConfigComponent(root);
+    case "models": return uninstallModelsComponent(root);
+  }
+}
+
+export async function uninstallPiStack(
+  projectRoot?: string,
+  tools?: string[]
+): Promise<{
   success: boolean;
   message: string;
   removed: string[];
@@ -442,20 +692,80 @@ export async function uninstallPiStack(projectRoot?: string): Promise<{
     return { success: true, message: "PiStack no estaba instalado", removed: [] };
   }
 
-  const removed: string[] = [];
-
-  // Remover .codegraph/
-  const codegraphDir = join(root, ".codegraph");
-  if (existsSync(codegraphDir)) {
-    rmSync(codegraphDir, { recursive: true, force: true });
-    removed.push(".codegraph/");
+  // Sin selección → desinstalación completa (comportamiento original)
+  if (!tools || tools.length === 0) {
+    const removed: string[] = [];
+    const codegraphDir = join(root, ".codegraph");
+    if (existsSync(codegraphDir)) {
+      rmSync(codegraphDir, { recursive: true, force: true });
+      removed.push(".codegraph/");
+    }
+    rmSync(piDir, { recursive: true, force: true });
+    removed.push(".pi/");
+    return { success: true, message: "PiStack desinstalado", removed };
   }
 
-  // Remover .pi/
-  rmSync(piDir, { recursive: true, force: true });
-  removed.push(".pi/");
+  // Con selección → desinstalar componentes individuales
+  const valid = validateComponents(tools);
+  if (valid === null) {
+    return {
+      success: false,
+      message: `Componente(s) inválido(s): ${tools.join(", ")}. Válidos: ${COMPONENTS.join(", ")}`,
+      removed: [],
+    };
+  }
 
-  return { success: true, message: "PiStack desinstalado", removed };
+  const removed: string[] = [];
+  for (const name of valid) {
+    const items = await uninstallComponent(name, root);
+    if (items.length > 0) removed.push(...items);
+    else removed.push(`${name}: no estaba instalado`);
+  }
+
+  return {
+    success: true,
+    message: removed.length > 0 ? "Componentes desinstalados" : "Nada para desinstalar",
+    removed,
+  };
+}
+
+// ─── Estado (list) ────────────────────────────────────────────────────────────
+
+export function listComponents(projectRoot?: string): Record<string, { installed: boolean; detail: string }> {
+  const root = projectRoot ?? findProjectRoot();
+  const piDir = join(root, ".pi");
+  const exists = (p: string): boolean => existsSync(join(piDir, p));
+  const hasFiles = (p: string): boolean => {
+    const dir = join(piDir, p);
+    if (!existsSync(dir)) return false;
+    return readdirSync(dir).some((entry) => statSync(join(dir, entry)).isFile());
+  };
+  const hasSkills = (): boolean => {
+    const skillsDir = join(piDir, "skills");
+    if (!existsSync(skillsDir)) return false;
+    return readdirSync(skillsDir).some((skill) => existsSync(join(skillsDir, skill, "SKILL.md")));
+  };
+
+  const status: Record<string, { installed: boolean; detail: string }> = {
+    "pi-mcp-adapter": { installed: false, detail: "no verificable localmente (gestionado por PI)" },
+    codegraph: { installed: exists("tools/codegraph/bin/codegraph"), detail: ".pi/tools/codegraph/" },
+    engram: { installed: exists("tools/engram/bin/engram"), detail: ".pi/tools/engram/" },
+    agents: { installed: exists("AGENTS.md"), detail: ".pi/AGENTS.md" },
+    skills: { installed: hasSkills(), detail: ".pi/skills/" },
+    extensions: { installed: hasFiles("extensions"), detail: ".pi/extensions/" },
+    controller: { installed: exists("tools/pistack-controller"), detail: ".pi/tools/pistack-controller/" },
+    "mcp-config": { installed: exists("mcp.json"), detail: ".pi/mcp.json" },
+    models: { installed: exists("models.json"), detail: ".pi/models.json" },
+  };
+
+  // Marcar si .pi no existe
+  if (!existsSync(piDir)) {
+    for (const key of Object.keys(status)) {
+      status[key].installed = false;
+    }
+  }
+
+  return status;
 }
 
 async function loadManifest(): Promise<Manifest> {

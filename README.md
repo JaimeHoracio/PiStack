@@ -39,7 +39,7 @@ curl -fsSL https://pi.dev/install.sh | sh
 
 ```bash
 # En tu proyecto, ejecuta:
-npx @jaimehoracio/pistack install
+npx pistack install
 ```
 
 Esto descarga e instala PiStack completo en tu proyecto (CodeGraph, Engram, skills, controller, MCP).
@@ -47,16 +47,34 @@ Esto descarga e instala PiStack completo en tu proyecto (CodeGraph, Engram, skil
 ### Instalación global (opcional)
 
 ```bash
-npm install -g @jaimehoracio/pistack
+npm install -g pistack
 # Luego en tu proyecto:
 pistack install
 ```
+
+### Instalar/desinstalar por componente
+
+Cada herramienta se instala y desinstala de forma independiente:
+
+```bash
+npx pistack install codegraph          # Solo CodeGraph
+npx pistack install engram             # Solo Engram
+npx pistack install skills extensions  # Skills + extensions
+npx pistack install --dir /ruta/proyecto codegraph
+
+npx pistack uninstall engram           # Desinstala solo Engram
+npx pistack uninstall codegraph        # Quita binario, índice y entrada MCP
+
+npx pistack list                       # Estado de cada componente
+```
+
+Componentes disponibles: `pi-mcp-adapter`, `codegraph`, `engram`, `agents`, `skills`, `extensions`, `controller`, `mcp-config`, `models`.
 
 ### Setup del proyecto
 
 ```bash
 cd tu-proyecto
-npx @jaimehoracio/pistack install
+npx pistack install
 ```
 
 Esto crea:
@@ -70,6 +88,8 @@ Esto crea:
 ├── extensions/        ← Extensions TypeScript
 └── tools/             ← Binarios locales
 ```
+
+> **Nota:** `npx pistack` sin argumentos muestra la ayuda. Usá `npx pistack install` para instalar.
 
 ## Uso
 
@@ -93,9 +113,9 @@ pi
 
 | Nivel | Cuándo | Flujo |
 |-------|--------|-------|
-| **0** | <5 líneas, 1 archivo | CodeGraph → directo |
-| **0+1** | 5-10 líneas, 1-2 archivos | CodeGraph → usuario elige |
-| **1+** | >10 líneas, API pública | CodeGraph → OpenSpec → evaluar |
+| **0** | 1 archivo, sin API pública, sin deps nuevas, <15 líneas | CodeGraph → directo |
+| **0+1** | 1-2 archivos, <30 líneas | CodeGraph → usuario elige |
+| **1+** | API pública, refactor amplio, >30 líneas, cross-module | CodeGraph → OpenSpec → evaluar |
 
 ## Proveedores Locales (Opcional)
 
@@ -168,36 +188,35 @@ MIT
 
 ```
 PiStack/
-├── fuente/                 # Código fuente del installer npm
-│   ├── assets/pi/         # Assets que se instalan en .pi/
-│   │   ├── AGENTS.md
-│   │   ├── mcp.json
-│   │   ├── models.json.template
-│   │   ├── skills/        # 19 skills
-│   │   ├── extensions/    # commands.ts
-│   │   └── tools/         # pistack-controller
-│   ├── src/
-│   │   ├── cli.ts         # Entry point: npx pistack
-│   │   └── pistack-installer.ts  # Lógica de instalación
-│   ├── scripts/
-│   │   └── update-manifest-hashes.ts
-│   ├── manifest.json      # Versiones y hashes de assets
-│   └── package.json       # Para npm publish
-├── .pi/                   # Ejemplo instalado (gitignored)
-├── PLAN.md                # Plan de migración
+├── src/
+│   ├── cli.ts                      # Entry point: npx pistack
+│   └── pistack-installer.ts        # Lógica de instalación/desinstalación por componentes
+├── scripts/
+│   └── generate-manifest.ts        # Genera manifest.json desde assets/ + package.json
+├── assets/
+│   ├── AGENTS.md                   # Agente custom
+│   ├── models.json.template        # Template de proveedores locales
+│   ├── extensions/                 # commands.ts
+│   ├── skills/                     # 19 skills
+│   └── tools/pistack-controller/   # Controller MCP (index.js + package.json)
+├── manifest.json                   # Versión + hashes de assets (generado, no editar a mano)
+├── package.json                    # name: pistack — fuente única de versión
 └── README.md
 ```
 
 ### Publicar en npm (mantenedores)
 
 ```bash
-cd fuente
-npm version patch  # o minor/major
+bun run generate-manifest   # regenera manifest.json (toma la versión de package.json)
+npm version patch           # o minor/major
 bun run build
 bun run build:installer
-bun run scripts/update-manifest-hashes.ts
 git add -A && git commit -m "chore: release vX.Y.Z"
 git tag vX.Y.Z
 git push && git push --tags
 npm publish --access public
 ```
+
+> **Nota:** la versión se centraliza en `package.json`. Regenerá el manifest SIEMPRE antes de publicar.
+> El paquete legacy `@jaimehoracio/pistack@0.0.1` quedó publicado en npm; deprecarlo es opcional:
+> `npm deprecate @jaimehoracio/pistack@0.0.1 "Renombrado a pistack"`
