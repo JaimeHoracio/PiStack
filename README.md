@@ -1,4 +1,4 @@
-# PiStack v0.0.4
+# PiStack v0.0.5
 
 Agent Harness para [PI](https://pi.dev) — orquestador de código con machine states, clasificación por niveles, y gestión de herramientas MCP.
 
@@ -86,7 +86,7 @@ Esto crea:
 ├── models.json        ← Config de modelos (opcional, para proveedores locales)
 ├── skills/            ← Skills (19)
 ├── extensions/        ← Extensions TypeScript
-└── tools/             ← Binarios locales
+└── bin/               ← Binarios locales (codegraph, engram, controller)
 ```
 
 > **Nota:** `npx pistack` sin argumentos muestra la ayuda. Usá `npx pistack install` para instalar.
@@ -160,19 +160,19 @@ proyecto/
 │   ├── models.json
 │   ├── skills/
 │   ├── extensions/
-│   └── tools/
+│   └── bin/
 ├── .codegraph/
 └── README.md
 ```
 
 ## Herramientas
 
-| Herramienta | Propósito                  | Localización                    |
-| ----------- | -------------------------- | ------------------------------- |
-| CodeGraph   | Exploración de código      | `.pi/tools/codegraph/bin/`      |
-| Engram      | Memoria persistente        | `.pi/tools/engram/bin/`         |
-| Context7    | Documentación de librerías | Remoto (MCP)                    |
-| Controller  | Machine states             | `.pi/tools/pistack-controller/` |
+| Herramienta | Propósito                  | Localización                  |
+| ----------- | -------------------------- | ----------------------------- |
+| CodeGraph   | Exploración de código      | `.pi/bin/codegraph/bin/`      |
+| Engram      | Memoria persistente        | `.pi/bin/engram/bin/`         |
+| Context7    | Documentación de librerías | Remoto (MCP)                  |
+| Controller  | Machine states             | `.pi/bin/pistack-controller/` |
 
 ## Seguridad
 
@@ -203,20 +203,3 @@ PiStack/
 ├── package.json                    # name: pistack — fuente única de versión
 └── README.md
 ```
-
-### Publicar en npm (mantenedores)
-
-```bash
-bun run build              # instalador CLI
-bun run build:installer    # módulo de instalación
-bun run build:controller   # bundlea assets/tools/pistack-controller (src/ → index.js autónomo)
-bun run generate-manifest  # regenera manifest.json (toma la versión de package.json)
-npm version patch          # o minor/major
-git add -A && git commit -m "chore: release vX.Y.Z"
-git tag vX.Y.Z
-git push && git push --tags
-npm publish --access public
-```
-
-> **Nota:** la versión se centraliza en `package.json`. Regenerá el manifest SIEMPRE antes de publicar.
-> El controller se distribuye como **bundle autónomo** (`index.js` con las deps embebidas) — nunca publiques sin correr `build:controller`, o el MCP fallará con `ERR_MODULE_NOT_FOUND`.

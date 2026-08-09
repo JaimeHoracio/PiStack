@@ -49,18 +49,18 @@
         }
       ]
     },
-    "opencode-server": {
-      "baseUrl": "${OPENCODE_SERVER_BASE_URL}",
+    "ollama-cloud": {
+      "baseUrl": "${OLLAMA_CLOUD_BASE_URL}",
       "api": "openai-completions",
-      "apiKey": "${OPENCODE_SERVER_API_KEY}",
+      "apiKey": "${OLLAMA_CLOUD_API_KEY}",
       "compat": {
         "supportsDeveloperRole": false,
         "supportsReasoningEffort": false
       },
       "models": [
         {
-          "id": "${OPENCODE_SERVER_MODEL}",
-          "name": "OpenCode Server: ${OPENCODE_SERVER_MODEL}",
+          "id": "${OLLAMA_CLOUD_MODEL}",
+          "name": "Ollama Cloud: ${OLLAMA_CLOUD_MODEL}",
           "reasoning": false,
           "input": ["text"],
           "contextWindow": 128000,

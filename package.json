@@ -1,6 +1,6 @@
 {
     "name": "pistack",
-    "version": "0.0.4",
+    "version": "0.0.5",
     "description": "PiStack - Agent Harness para PI (Orquestador con machine states, 3 niveles, MCP, skills curadas)",
     "type": "module",
     "main": "dist/cli.js",
@@ -45,9 +45,11 @@
     "engines": {
         "bun": ">=1.0.0"
     },
-    "dependencies": {},
     "devDependencies": {
+        "@earendil-works/pi-coding-agent": "^0.84.1",
+        "@earendil-works/pi-ai": "^0.84.1",
         "@modelcontextprotocol/server": "^2.0.0",
+        "@opencode-ai/sdk": "^1.18.15",
         "bun-types": "latest",
         "zod": "^4.4.3"
     }
