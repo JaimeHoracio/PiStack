@@ -33,7 +33,7 @@ If AGENTS.md or GEMINI.md says "don't use TDD" and a skill says "always use TDD,
 
 **In Gemini CLI:** Skills activate via the `activate_skill` tool. Gemini loads skill metadata at session start and activates the full content on demand.
 
-**In OpenCode:** Use the native `skill` tool. Skills are loaded from `.opencode/skills/`, `assets/skills/`, and installed plugins.
+**In Pi:** Use the native `skill` tool. Skills are loaded from `.pi/skills/`, `assets/skills/`, and installed plugins.
 
 ## Platform Adaptation
 

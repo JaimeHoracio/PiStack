@@ -19,7 +19,7 @@ A thinking partner that adapts to what the user needs: structured design when th
 | "explore", "investigate", "think through", "what if", "how does" | **open-explore** |
 | "brainstorm", "ideate", "propose approach" | **creative-design** |
 | "check", "understand", "review existing" | **open-explore** |
-| Unclear | Ask with **question** tool: "¿Querés diseñar algo nuevo o explorar/entender algo existente?" |
+| Unclear | Preguntá en lenguaje natural: "¿Querés diseñar algo nuevo o explorar/entender algo existente?" y detenete. |
 
 ---
 

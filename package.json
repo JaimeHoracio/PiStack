@@ -1,11 +1,11 @@
 {
     "name": "pistack",
-    "version": "0.0.6",
+    "version": "0.0.7",
     "description": "PiStack - Agent Harness para PI (Orquestador con machine states, 3 niveles, MCP, skills curadas)",
     "type": "module",
     "main": "dist/cli.js",
     "bin": {
-        "pistack": "./dist/cli.js"
+        "pistack": "dist/cli.js"
     },
     "files": [
         "dist/",
@@ -25,18 +25,13 @@
         "pi",
         "pi-coding-agent",
         "agent-harness",
-        "orchestrator",
-        "mcp",
-        "codegraph",
-        "engram",
-        "superpowers",
-        "openspec"
+        "orchestrator"
     ],
     "author": "Jaime Horacio",
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "https://github.com/JaimeHoracio/PiStack.git"
+        "url": "git+https://github.com/JaimeHoracio/PiStack.git"
     },
     "bugs": {
         "url": "https://github.com/JaimeHoracio/PiStack/issues"

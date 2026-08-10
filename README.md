@@ -1,18 +1,16 @@
-# PiStack v0.0.6
+# PiStack
 
-Agent Harness para [PI](https://pi.dev) — orquestador de código con machine states, clasificación por niveles, y gestión de herramientas MCP.
+Agent Harness para [PI](https://pi.dev) — convierte PI en un orquestador de código con machine states, clasificación por niveles y herramientas MCP.
 
 ## Qué es
 
-PiStack es un agent harness que convierte PI en un orquestador de código sofisticado:
+PiStack agrega a PI:
 
 - **3 niveles de clasificación** — trivial (directo), chico (usuario elige), complejo (OpenSpec)
 - **Controller MCP** — máquina de estados persistida que valida transiciones
 - **Skills curadas** — TDD, review, writing-plans, execution-mode-evaluation, y más
 - **MCP integration** — CodeGraph, Engram, Context7 vía pi-mcp-adapter
-- **Seguridad** — protección de archivos con credenciales
-- **Robustez** — manejo de fallos del LLM, skills, y herramientas
-- **Proveedores locales opcionales** — Ollama, LM Studio via variables de entorno
+- **Proveedores locales** — Ollama, LM Studio, Ollama Cloud via variables de entorno
 
 ## Instalación
 
@@ -33,14 +31,14 @@ npm install -g @earendil-works/pi-coding-agent
 curl -fsSL https://pi.dev/install.sh | sh
 ```
 
-### Instalar PiStack (recomendado: npx - sin instalación global)
+### Instalar PiStack
 
 ```bash
-# En tu proyecto, ejecuta:
+# En tu proyecto:
 npx pistack install
 ```
 
-Esto descarga e instala PiStack completo en tu proyecto (CodeGraph, Engram, skills, controller, MCP).
+Esto descarga e instala PiStack completo en tu proyecto.
 
 ### Instalación global (opcional)
 
@@ -51,8 +49,6 @@ pistack install
 ```
 
 ### Instalar/desinstalar por componente
-
-Cada herramienta se instala y desinstala de forma independiente:
 
 ```bash
 npx pistack install codegraph          # Solo CodeGraph
@@ -66,7 +62,7 @@ npx pistack uninstall codegraph        # Quita binario, índice y entrada MCP
 npx pistack list                       # Estado de cada componente
 ```
 
-Componentes disponibles: `pi-mcp-adapter`, `codegraph`, `engram`, `agents`, `skills`, `extensions`, `controller`, `mcp-config`, `models`.
+Componentes: `pi-mcp-adapter`, `codegraph`, `engram`, `agents`, `skills`, `extensions`, `controller`, `mcp-config`, `models`.
 
 ### Setup del proyecto
 
@@ -81,13 +77,11 @@ Esto crea:
 .pi/
 ├── AGENTS.md          ← Agente custom
 ├── mcp.json           ← Config MCP
-├── models.json        ← Config de modelos (opcional, para proveedores locales)
+├── models.json        ← Config de modelos (proveedores locales)
 ├── skills/            ← Skills (19)
 ├── extensions/        ← Extensions TypeScript
 └── bin/               ← Binarios locales (codegraph, engram, controller)
 ```
-
-> **Nota:** `npx pistack` sin argumentos muestra la ayuda. Usá `npx pistack install` para instalar.
 
 ## Uso
 
@@ -100,7 +94,7 @@ pi
 
 ### Flujo del agente
 
-1. **Recibe request** → loguea qué pidió
+1. **Recibe request** → interpreta qué quiere el usuario
 2. **Discovery** → CodeGraph explora el código
 3. **Clasifica nivel** → 0, 0+1, o 1+
 4. **Pregunta al usuario** → spec o directo (según nivel)
@@ -117,21 +111,32 @@ pi
 
 ## Proveedores Locales (Opcional)
 
-PiStack incluye configuración para usar modelos locales como **Ollama** o **LM Studio**. Solo necesitás agregar las variables de entorno a tu `.env`:
+PiStack incluye configuración para usar modelos locales o cloud sin infraestructura propia. Agregá las variables a tu `.env`:
 
-### Variables de entorno (.env)
+### Ollama (local)
 
 ```bash
-# Ollama (ej: http://localhost:11434/v1 o http://host.docker.internal:11434/v1 en Docker)
 OLLAMA_BASE_URL=http://localhost:11434/v1
 OLLAMA_API_KEY=ollama
 OLLAMA_MODEL_1=llama3.1:8b
 OLLAMA_MODEL_2=qwen2.5-coder:7b
+```
 
-# LM Studio (ej: http://localhost:1234/v1)
+### LM Studio (local)
+
+```bash
 LMSTUDIO_BASE_URL=http://localhost:1234/v1
 LMSTUDIO_API_KEY=lmstudio
 LMSTUDIO_MODEL=llama3.1:8b
+```
+
+### Ollama Cloud (cloud, requiere API key)
+
+```bash
+OLLAMA_CLOUD_BASE_URL=https://ollama.com/api
+OLLAMA_CLOUD_API_KEY=tu_api_key
+OLLAMA_CLOUD_MODEL=llama3.1
+```
 
 ### Cómo funciona
 
@@ -142,21 +147,23 @@ LMSTUDIO_MODEL=llama3.1:8b
 
 > **Nota:** Si usás Ollama en Docker, la URL debe ser `http://host.docker.internal:11434/v1` (no localhost).
 
+## Seguridad
+
+Cada componente publicado incluye un **hash SHA-256** en el `manifest.json` y en el `pistack-lock.json` del proyecto. Al instalar, PiStack verifica que los hashes coincidan — si un archivo fue modificado post-build, la instalación lo detecta y rechaza el componente.
+
 ## Estructura
 
 ```
-
 proyecto/
 ├── .pi/
-│ ├── AGENTS.md
-│ ├── mcp.json
-│ ├── models.json
-│ ├── skills/
-│ ├── extensions/
-│ └── bin/
+│   ├── AGENTS.md
+│   ├── mcp.json
+│   ├── models.json
+│   ├── skills/
+│   ├── extensions/
+│   └── bin/
 ├── .codegraph/
 └── README.md
-
 ```
 
 ## Herramientas
@@ -168,36 +175,27 @@ proyecto/
 | Context7    | Documentación de librerías | Remoto (MCP)                  |
 | Controller  | Machine states             | `.pi/bin/pistack-controller/` |
 
-## Seguridad
-
-- **NUNCA** lee archivos con credenciales (`.env`, `*.key`, `credentials.json`)
-- **SIEMPRE** pregunta antes de ejecutar
-- **Logging** de todas las acciones
-
 ## Licencia
 
 MIT
 
-## Estructura del Repositorio (para desarrolladores)
+## Estructura del Repositorio
 
 ```
-
 PiStack/
 ├── src/
-│ ├── cli.ts # Entry point: npx pistack
-│ └── pistack-installer.ts # Lógica de instalación/desinstalación por componentes
+│   ├── cli.ts                  # Entry point: npx pistack
+│   └── pistack-installer.ts    # Lógica de instalación/desinstalación
 ├── scripts/
-│ └── generate-manifest.ts # Genera manifest.json desde assets/ + package.json
+│   └── generate-manifest.ts    # Genera manifest.json desde assets/ + package.json
 ├── assets/
-│ ├── AGENTS.md # Agente custom
-│ ├── models.json.template # Template de proveedores locales
-│ ├── extensions/ # commands.ts
-│ ├── skills/ # 19 skills
-│ └── tools/pistack-controller/ # Controller MCP (index.js + package.json)
-├── manifest.json # Versión + hashes de assets (generado, no editar a mano)
-├── package.json # name: pistack — fuente única de versión
+│   ├── AGENTS.md               # Agente custom
+│   ├── models.json.template    # Template de proveedores locales
+│   ├── extensions/             # commands.ts, opencode-server.ts
+│   ├── skills/                 # 19 skills
+│   ├── types/                  # pi-types.d.ts (dev only)
+│   └── tools/pistack-controller/ # Controller MCP
+├── manifest.json               # Versión + hashes (generado, no editar)
+├── package.json                # Fuente única de versión
 └── README.md
-
-```
-
 ```

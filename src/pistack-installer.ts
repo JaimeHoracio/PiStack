@@ -402,25 +402,29 @@ export async function installEngramComponent(toolsDir: string): Promise<Componen
 
 export function installAgentsComponent(piDir: PiStackPaths, manifest: Manifest): ComponentDetail {
     try {
-        copyFileSync(join(ASSETS_DIR, 'AGENTS.md'), join(piDir.root, 'AGENTS.md'));
-        const content = readFileSync(join(ASSETS_DIR, 'AGENTS.md'), 'utf-8');
-        const hash = sha256(content);
-        upsertLockfile(
-            piDir,
-            'agents',
-            {
-                name: 'pistack',
-                file: 'AGENTS.md',
-                description: 'Agente PiStack para PI',
-                version: manifest.version,
-                sha256: hash,
-            },
-            manifest,
-            hash
-        );
-        return { success: true, message: 'AGENTS.md instalado' };
+        for (const agent of manifest.agents) {
+            const srcPath = join(ASSETS_DIR, agent.file);
+            const destPath = join(piDir.root, agent.file);
+            copyFileSync(srcPath, destPath);
+            const content = readFileSync(srcPath, 'utf-8');
+            const hash = sha256(content);
+            upsertLockfile(
+                piDir,
+                'agents',
+                {
+                    name: agent.name,
+                    file: agent.file,
+                    description: agent.description,
+                    version: agent.version,
+                    sha256: hash,
+                },
+                manifest,
+                hash
+            );
+        }
+        return { success: true, message: `${manifest.agents.length} agent(s) instalados` };
     } catch (e) {
-        return { success: false, message: `Error copiando AGENTS.md: ${e}` };
+        return { success: false, message: `Error copiando agents: ${e}` };
     }
 }
 
@@ -624,7 +628,7 @@ export async function installPiStack(
     }
 
     // Migración: PI 0.35+ deprecó .pi/tools/ (custom tools → extensions) y emite
-    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.6.
+    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.7.
     migrateLegacyToolsDir(root);
 
     const piDir = createPiDir(root);

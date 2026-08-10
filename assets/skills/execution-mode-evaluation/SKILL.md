@@ -122,7 +122,7 @@ Para cada fase de `tasks.md`, evaluar intra-fase:
 }
 ```
 
-**Output para el usuario (mostrar con `question` tool):**
+**Output para el usuario (mostrar en lenguaje natural):**
 
 ```markdown
 ## Análisis de modo de ejecución
@@ -166,7 +166,7 @@ Para cada fase de `tasks.md`, evaluar intra-fase:
 | `estLines` | Estimación conservadora |
 | `hasExplicitContract` | `true` si design.md explicita contratos |
 
-**⚠️ Este skill provee ANÁLISIS, no autorización.** El coordinador muestra el snapshot al usuario y pide confirmación con `question` tool.
+**⚠️ Este skill provee ANÁLISIS, no autorización.** El coordinador muestra el snapshot al usuario y pide confirmación en lenguaje natural.
 
 ## Ejemplo compacto
 

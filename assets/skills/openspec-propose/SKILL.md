@@ -28,12 +28,12 @@ When ready to implement, run /opsx-apply
 
 2. **If no clear input provided, ask what they want to build**
 
-   Use the **question tool** (open-ended, no preset options) to ask:
+   Preguntá en lenguaje natural (sin tool):
    > "What change do you want to work on? Describe what you want to build or fix."
 
    From their description, derive a kebab-case name (e.g., "add user authentication" → `add-user-auth`).
 
-   **IMPORTANT**: Do NOT proceed without understanding what the user wants to build. **IMPORTANT**: After calling `question`, STOP. Do not generate more text or execute tools.
+   **IMPORTANT**: Do NOT proceed without understanding what the user wants to build. **IMPORTANT**: Después de preguntar, STOP. Do not generate more text or execute tools.
 
 3. **Create the change directory**
    ```bash
@@ -77,9 +77,9 @@ When ready to implement, run /opsx-apply
       - Check if every artifact ID in `applyRequires` has `status: "done"` in the artifacts array
       - Stop when all `applyRequires` artifacts are done
 
-   c. **If an artifact requires user input** (unclear context):
-      - Use **question tool** to clarify, then STOP and wait for the answer
-      - Then continue with creation
+c. **If an artifact requires user input** (unclear context):
+       - Preguntá en lenguaje natural para clarificar, luego STOP y esperá la respuesta
+       - Luego continuá con la creación
 
 6. **Show final status**
    ```bash

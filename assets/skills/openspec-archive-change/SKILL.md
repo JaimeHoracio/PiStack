@@ -17,7 +17,7 @@ Archive a completed change in the experimental workflow.
 
 1. **If no change name provided, prompt for selection**
 
-   Run `openspec list --json` to get available changes. Use the **question tool** to let the user select. After calling `question`, STOP and wait for the answer.
+   Run `openspec list --json` to get available changes. Preguntá en lenguaje natural para que el usuario seleccione. Después de preguntar, STOP y esperá la respuesta.
 
    Show only active changes (not already archived).
    Include the schema used for each change if available.
@@ -34,7 +34,7 @@ Archive a completed change in the experimental workflow.
 
    **If any artifacts are not `done`:**
    - Display warning listing incomplete artifacts
-   - Use **question tool** to confirm user wants to proceed. After calling `question`, STOP and wait for the answer.
+   - Preguntá en lenguaje natural si el usuario quiere proceder. STOP y esperá la respuesta.
    - Proceed if user confirms
 
 3. **Check task completion status**
@@ -45,7 +45,7 @@ Archive a completed change in the experimental workflow.
 
    **If incomplete tasks found:**
    - Display warning showing count of incomplete tasks
-   - Use **question tool** to confirm user wants to proceed. After calling `question`, STOP and wait for the answer.
+   - Preguntá en lenguaje natural si el usuario quiere proceder. STOP y esperá la respuesta.
    - Proceed if user confirms
 
    **If no tasks file exists:** Proceed without task-related warning.

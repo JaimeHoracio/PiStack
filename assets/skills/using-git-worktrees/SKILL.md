@@ -27,18 +27,18 @@ ls -d worktrees 2>/dev/null      # Alternative
 
 **If found:** Use that directory. If both exist, `.worktrees` wins.
 
-### 2. Check AGENTS.md / OpenCode config
+### 2. Check AGENTS.md / Pi config
 
 ```bash
 # Check AGENTS.md for worktree directory preference
-grep -i "worktree.*director" AGENTS.md 2>/dev/null || grep -ri "worktree" .opencode/ 2>/dev/null
+grep -i "worktree.*director" AGENTS.md 2>/dev/null || grep -ri "worktree" .pi/ 2>/dev/null
 ```
 
 **If preference specified:** Use it without asking.
 
 ### 3. Ask User
 
-If no directory exists and no AGENTS.md / OpenCode preference:
+If no directory exists and no AGENTS.md / Pi preference:
 
 ```
 No worktree directory found. Where should I create worktrees?
@@ -149,7 +149,7 @@ Ready to implement <feature-name>
 | `.worktrees/` exists | Use it (verify ignored) |
 | `worktrees/` exists | Use it (verify ignored) |
 | Both exist | Use `.worktrees/` |
-| Neither exists | Check AGENTS.md / .opencode → Ask user |
+| Neither exists | Check AGENTS.md / .pi → Ask user |
 | Directory not ignored | Add to .gitignore + commit |
 | Tests fail during baseline | Report failures + ask |
 | No package.json/Cargo.toml | Skip dependency install |
@@ -164,7 +164,7 @@ Ready to implement <feature-name>
 ### Assuming directory location
 
 - **Problem:** Creates inconsistency, violates project conventions
-- **Fix:** Follow priority: existing > AGENTS.md / .opencode > ask
+- **Fix:** Follow priority: existing > AGENTS.md / .pi > ask
 
 ### Proceeding with failing tests
 
@@ -200,10 +200,10 @@ Ready to implement auth feature
 - Skip baseline test verification
 - Proceed with failing tests without asking
 - Assume directory location when ambiguous
-- Skip AGENTS.md / .opencode check
+- Skip AGENTS.md / .pi check
 
 **Always:**
-- Follow directory priority: existing > AGENTS.md / .opencode > ask
+- Follow directory priority: existing > AGENTS.md / .pi > ask
 - Verify directory is ignored for project-local
 - Auto-detect and run project setup
 - Verify clean test baseline

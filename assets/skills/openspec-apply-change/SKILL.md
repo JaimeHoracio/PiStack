@@ -29,7 +29,7 @@ Implement tasks from an OpenSpec change.
    If a name is provided, use it. Otherwise:
    - Infer from conversation context if the user mentioned a change
    - Auto-select if only one active change exists
-   - If ambiguous, run `openspec list --json` to get available changes and use the **question tool** to let the user select. After calling `question`, STOP and wait for the answer.
+   - If ambiguous, run `openspec list --json` to get available changes y preguntá en lenguaje natural para que el usuario seleccione. Después de preguntar, STOP y esperá la respuesta.
 
    Always announce: "Using change: <name>" and how to override (e.g., `/opsx-apply <other>`).
 
