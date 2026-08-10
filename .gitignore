@@ -1,12 +1,4 @@
 
-# Temporales (eliminar junto con los directorios)
-.codegraph/
-.opencode/
-openspec/
-opencode.json
-fuente/
-PLAN.md
-
 # Build output
 dist/
 
@@ -19,3 +11,6 @@ dist/
 # Dependencies
 node_modules/
 
+# Tools
+.codegraph
+openspec

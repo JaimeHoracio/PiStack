@@ -21,12 +21,9 @@ const ASSETS_DIR = join(PACKAGE_ROOT, 'assets');
 
 export interface PiStackPaths {
     root: string;
-    agents: string;
-    commands: string;
     skills: string;
     extensions: string;
     bin: string;
-    mcp: string;
 }
 
 export interface ManifestItem {
@@ -137,12 +134,9 @@ export function isValidInstallRoot(root: string): boolean {
 export function ensurePiPaths(piDir: string): PiStackPaths {
     const paths: PiStackPaths = {
         root: piDir,
-        agents: join(piDir, 'agents'),
-        commands: join(piDir, 'commands'),
         skills: join(piDir, 'skills'),
         extensions: join(piDir, 'extensions'),
         bin: join(piDir, 'bin'),
-        mcp: join(piDir, 'mcp'),
     };
     for (const dir of Object.values(paths)) {
         if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -180,6 +174,26 @@ export function copyDirRecursive(src: string, dest: string, skipGenerated: boole
         const stat = statSync(srcPath);
         if (stat.isDirectory()) {
             copyDirRecursive(srcPath, destPath, skipGenerated);
+        } else {
+            copyFileSync(srcPath, destPath);
+        }
+    }
+}
+
+/**
+ * Copia solo archivos de extensión válidos (*.ts que NO sean .d.ts ni tsconfig.json).
+ * Pi espera que cada archivo en .pi/extensions/ exporte una factory function.
+ * Los .d.ts son solo tipos y tsconfig.json es de soporte — ninguno tiene runtime code.
+ */
+export function copyExtensionsDir(src: string, dest: string): void {
+    if (!existsSync(dest)) mkdirSync(dest, { recursive: true });
+    for (const entry of readdirSync(src)) {
+        if (entry.endsWith('.d.ts') || entry === 'tsconfig.json') continue;
+        const srcPath = join(src, entry);
+        const destPath = join(dest, entry);
+        const stat = statSync(srcPath);
+        if (stat.isDirectory()) {
+            copyExtensionsDir(srcPath, destPath);
         } else {
             copyFileSync(srcPath, destPath);
         }
@@ -442,7 +456,7 @@ export function installSkillsComponent(piDir: PiStackPaths, manifest: Manifest):
 
 export function installExtensionsComponent(piDir: PiStackPaths): ComponentDetail {
     try {
-        copyDirRecursive(join(ASSETS_DIR, 'extensions'), join(piDir.root, 'extensions'));
+        copyExtensionsDir(join(ASSETS_DIR, 'extensions'), join(piDir.root, 'extensions'));
         return { success: true, message: 'Extensions instaladas' };
     } catch (e) {
         return { success: false, message: `Error instalando extensions: ${e}` };
@@ -610,7 +624,7 @@ export async function installPiStack(
     }
 
     // Migración: PI 0.35+ deprecó .pi/tools/ (custom tools → extensions) y emite
-    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.5.
+    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.6.
     migrateLegacyToolsDir(root);
 
     const piDir = createPiDir(root);

@@ -1,8 +1,6 @@
-# PiStack v0.0.5
+# PiStack v0.0.6
 
 Agent Harness para [PI](https://pi.dev) — orquestador de código con machine states, clasificación por niveles, y gestión de herramientas MCP.
-
-**Repo:** [JaimeHoracio/PiStack](https://github.com/JaimeHoracio/PiStack)
 
 ## Qué es
 
@@ -14,7 +12,7 @@ PiStack es un agent harness que convierte PI en un orquestador de código sofist
 - **MCP integration** — CodeGraph, Engram, Context7 vía pi-mcp-adapter
 - **Seguridad** — protección de archivos con credenciales
 - **Robustez** — manejo de fallos del LLM, skills, y herramientas
-- **Proveedores locales opcionales** — Ollama, LM Studio, OpenCode Server via variables de entorno
+- **Proveedores locales opcionales** — Ollama, LM Studio via variables de entorno
 
 ## Instalación
 
@@ -119,7 +117,7 @@ pi
 
 ## Proveedores Locales (Opcional)
 
-PiStack incluye configuración para usar modelos locales como **Ollama**, **LM Studio** o **OpenCode Server**. Solo necesitás agregar las variables de entorno a tu `.env`:
+PiStack incluye configuración para usar modelos locales como **Ollama** o **LM Studio**. Solo necesitás agregar las variables de entorno a tu `.env`:
 
 ### Variables de entorno (.env)
 
@@ -135,12 +133,6 @@ LMSTUDIO_BASE_URL=http://localhost:1234/v1
 LMSTUDIO_API_KEY=lmstudio
 LMSTUDIO_MODEL=llama3.1:8b
 
-# OpenCode Server (ej: http://localhost:8080/v1)
-OPENCODE_SERVER_BASE_URL=http://localhost:8080/v1
-OPENCODE_SERVER_API_KEY=opencode
-OPENCODE_SERVER_MODEL=gpt-4o
-```
-
 ### Cómo funciona
 
 1. Al ejecutar `pistack install`, se crea `.pi/models.json` desde la plantilla
@@ -153,16 +145,18 @@ OPENCODE_SERVER_MODEL=gpt-4o
 ## Estructura
 
 ```
+
 proyecto/
 ├── .pi/
-│   ├── AGENTS.md
-│   ├── mcp.json
-│   ├── models.json
-│   ├── skills/
-│   ├── extensions/
-│   └── bin/
+│ ├── AGENTS.md
+│ ├── mcp.json
+│ ├── models.json
+│ ├── skills/
+│ ├── extensions/
+│ └── bin/
 ├── .codegraph/
 └── README.md
+
 ```
 
 ## Herramientas
@@ -187,19 +181,23 @@ MIT
 ## Estructura del Repositorio (para desarrolladores)
 
 ```
+
 PiStack/
 ├── src/
-│   ├── cli.ts                      # Entry point: npx pistack
-│   └── pistack-installer.ts        # Lógica de instalación/desinstalación por componentes
+│ ├── cli.ts # Entry point: npx pistack
+│ └── pistack-installer.ts # Lógica de instalación/desinstalación por componentes
 ├── scripts/
-│   └── generate-manifest.ts        # Genera manifest.json desde assets/ + package.json
+│ └── generate-manifest.ts # Genera manifest.json desde assets/ + package.json
 ├── assets/
-│   ├── AGENTS.md                   # Agente custom
-│   ├── models.json.template        # Template de proveedores locales
-│   ├── extensions/                 # commands.ts
-│   ├── skills/                     # 19 skills
-│   └── tools/pistack-controller/   # Controller MCP (index.js + package.json)
-├── manifest.json                   # Versión + hashes de assets (generado, no editar a mano)
-├── package.json                    # name: pistack — fuente única de versión
+│ ├── AGENTS.md # Agente custom
+│ ├── models.json.template # Template de proveedores locales
+│ ├── extensions/ # commands.ts
+│ ├── skills/ # 19 skills
+│ └── tools/pistack-controller/ # Controller MCP (index.js + package.json)
+├── manifest.json # Versión + hashes de assets (generado, no editar a mano)
+├── package.json # name: pistack — fuente única de versión
 └── README.md
+
+```
+
 ```
