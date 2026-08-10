@@ -13,6 +13,7 @@ import { homedir } from 'os';
 import { createHash } from 'crypto';
 import { join, resolve, dirname, relative } from 'path';
 import { fileURLToPath } from 'url';
+import { createInterface } from 'readline';
 import { $ } from 'bun';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -291,6 +292,77 @@ function removeMcpEntry(piDir: string, name: string): void {
     }
 }
 
+// ─── Cross-platform helpers ───────────────────────────────────────────────────
+
+/** ¿Estamos en Windows? */
+function isWindows(): boolean {
+    return process.platform === 'win32';
+}
+
+/** Nombre del binario según plataforma (los ejecutables de Windows llevan .exe). */
+function getBinaryName(base: string): string {
+    return isWindows() ? `${base}.exe` : base;
+}
+
+/**
+ * Nombre del asset de CodeGraph para la plataforma/arquitectura actual.
+ * Assets publicados: codegraph-{darwin|linux|win32}-{x64|arm64}.{tar.gz|zip}
+ */
+function getCodeGraphAssetName(): string {
+    const ext = isWindows() ? 'zip' : 'tar.gz';
+    return `codegraph-${process.platform}-${process.arch}.${ext}`;
+}
+
+/**
+ * Nombre del asset de Engram para la plataforma/arquitectura actual.
+ * Assets publicados: engram_{version}_{darwin|linux|windows}_{amd64|arm64}.{tar.gz|zip}
+ */
+function getEngramAssetName(versionNum: string): string {
+    const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+    const platform = isWindows() ? 'windows' : process.platform;
+    const ext = isWindows() ? 'zip' : 'tar.gz';
+    return `engram_${versionNum}_${platform}_${arch}.${ext}`;
+}
+
+/**
+ * Descomprime un archivo descargado según la plataforma:
+ * - Windows: PowerShell Expand-Archive (zip)
+ * - Unix: tar (tar.gz)
+ * El archivo original se elimina después de extraer.
+ */
+async function extractArchive(archivePath: string, destDir: string): Promise<void> {
+    if (isWindows()) {
+        await $`powershell -NoProfile -Command Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force`.quiet();
+    } else {
+        await $`tar -xzf ${archivePath} -C ${destDir}`.quiet();
+    }
+    rmSync(archivePath, { force: true });
+}
+
+/**
+ * Si el directorio extraído contiene una única subcarpeta (ej: codegraph-linux-x64/),
+ * la aplana moviendo su contenido al nivel superior.
+ */
+function flattenExtractedDir(destDir: string): void {
+    const entries = readdirSync(destDir);
+    if (entries.length === 1) {
+        const only = join(destDir, entries[0]);
+        if (statSync(only).isDirectory()) {
+            for (const inner of readdirSync(only)) {
+                renameSync(join(only, inner), join(destDir, inner));
+            }
+            rmSync(only, { recursive: true, force: true });
+        }
+    }
+}
+
+/** chmod +x solo en Unix — en Windows no existe y no hace falta. */
+async function chmodIfUnix(filePath: string): Promise<void> {
+    if (!isWindows()) {
+        await $`chmod +x ${filePath}`.quiet();
+    }
+}
+
 // ─── Downloads ────────────────────────────────────────────────────────────────
 
 async function downloadFile(url: string, dest: string, maxSize: number = 100_000_000): Promise<void> {
@@ -299,6 +371,117 @@ async function downloadFile(url: string, dest: string, maxSize: number = 100_000
     const arrayBuffer = await response.arrayBuffer();
     if (arrayBuffer.byteLength > maxSize) throw new Error(`Download too large: ${arrayBuffer.byteLength} bytes`);
     writeFileSync(dest, Buffer.from(arrayBuffer));
+}
+
+// ─── Instalación de PI (si no está instalado) ────────────────────────────────
+
+/** ¿Existe un comando en el PATH? */
+function commandExists(cmd: string): boolean {
+    return Bun.which(cmd) !== null;
+}
+
+/** Pide input al usuario (solo si hay terminal interactiva). null si no hay TTY. */
+function promptInput(question: string): Promise<string | null> {
+    if (!process.stdin.isTTY) return Promise.resolve(null);
+    return new Promise((resolve) => {
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        rl.question(question, (answer) => {
+            rl.close();
+            resolve(answer.trim());
+        });
+    });
+}
+
+/**
+ * Ofrece instalar PI (@earendil-works/pi-coding-agent) si no está instalado.
+ * Nunca instala sin preguntar. Devuelve true si PI quedó disponible.
+ */
+async function installPiIfNeeded(): Promise<boolean> {
+    try {
+        await $`pi --version`.quiet();
+        return true; // PI ya está instalado
+    } catch {
+        // PI no está → ofrecer instalarlo
+    }
+
+    console.log('\n⚠️  PI no está instalado.');
+    console.log('PiStack requiere PI (@earendil-works/pi-coding-agent).');
+
+    const hasBun = commandExists('bun');
+    const hasNpm = commandExists('npm');
+    const hasCurl = !isWindows() && commandExists('curl');
+
+    if (!hasBun && !hasNpm && !hasCurl) {
+        console.log('❌ No se detectó bun, npm ni curl. Instalá PI manualmente: https://pi.dev');
+        return false;
+    }
+
+    const options: { label: string; args: string[]; shell?: boolean }[] = [];
+    if (hasBun) {
+        options.push({
+            label: 'bun add -g @earendil-works/pi-coding-agent (recomendado)',
+            args: ['bun', 'add', '-g', '@earendil-works/pi-coding-agent'],
+        });
+    }
+    if (hasNpm) {
+        options.push({
+            label: 'npm install -g @earendil-works/pi-coding-agent',
+            args: ['npm', 'install', '-g', '@earendil-works/pi-coding-agent'],
+        });
+    }
+    if (hasCurl) {
+        options.push({
+            label: 'curl -fsSL https://pi.dev/install.sh | sh',
+            args: ['curl -fsSL https://pi.dev/install.sh | sh'],
+            shell: true,
+        });
+    }
+
+    console.log('\nOpciones de instalación:');
+    options.forEach((opt, i) => console.log(`  ${i + 1}. ${opt.label}`));
+    console.log(`  ${options.length + 1}. Cancelar (instalar PI manualmente después)`);
+
+    const answer = await promptInput(`\nElegí una opción (1-${options.length + 1}): `);
+    if (answer === null) {
+        console.log('❌ Sin terminal interactiva. Instalá PI manualmente: https://pi.dev');
+        return false;
+    }
+    const choice = Number(answer);
+    if (!Number.isInteger(choice) || choice < 1 || choice > options.length + 1) {
+        console.log('❌ Opción inválida. Instalá PI manualmente: https://pi.dev');
+        return false;
+    }
+    if (choice === options.length + 1) {
+        console.log('❌ Instalación de PI cancelada por el usuario.');
+        return false;
+    }
+
+    const opt = options[choice - 1];
+    console.log(`\n🚀 Instalando PI: ${opt.label}`);
+    let exitCode = 1;
+    try {
+        if (opt.shell) {
+            exitCode = await $.shell(opt.args[0]).exited;
+        } else {
+            const [bin, ...rest] = opt.args;
+            exitCode = await Bun.spawn([bin, ...rest], { stdout: 'inherit', stderr: 'inherit' }).exited;
+        }
+    } catch {
+        exitCode = 1;
+    }
+    if (exitCode !== 0) {
+        console.log('❌ Falló la instalación de PI. Instalalo manualmente: https://pi.dev');
+        return false;
+    }
+
+    try {
+        const piVersion = await $`pi --version`.text();
+        console.log(`✅ PI instalado correctamente (${piVersion.trim()}).`);
+        return true;
+    } catch {
+        console.log('❌ No se pudo verificar PI tras la instalación. Instalalo manualmente: https://pi.dev');
+        return false;
+    }
 }
 
 // ─── Install por componente ───────────────────────────────────────────────────
@@ -317,7 +500,8 @@ export async function installCodeGraphComponent(toolsDir: string, projectRoot: s
     const cgBinDir = join(cgToolDir, 'bin');
     if (!existsSync(cgBinDir)) mkdirSync(cgBinDir, { recursive: true });
 
-    const localBin = join(cgBinDir, 'codegraph');
+    const binName = getBinaryName('codegraph');
+    const localBin = join(cgBinDir, binName);
     if (existsSync(localBin)) {
         try {
             await $`${localBin} --version`.quiet();
@@ -334,15 +518,16 @@ export async function installCodeGraphComponent(toolsDir: string, projectRoot: s
             const tagData = await tagResponse.json();
             const tag = tagData.tag_name || 'v1.5.0';
 
-            const url = `https://github.com/colbymchenry/codegraph/releases/download/${tag}/codegraph-linux-x64.tar.gz`;
-            const tarPath = join(cgToolDir, 'codegraph.tar.gz');
+            const assetName = getCodeGraphAssetName();
+            const url = `https://github.com/colbymchenry/codegraph/releases/download/${tag}/${assetName}`;
+            const archivePath = join(cgToolDir, assetName);
 
-            await downloadFile(url, tarPath, 200_000_000);
+            await downloadFile(url, archivePath, 200_000_000);
 
-            await $`tar -xzf ${tarPath} -C ${cgToolDir} && mv ${cgToolDir}/codegraph-linux-x64/* ${cgToolDir}/ && rm -rf ${cgToolDir}/codegraph-linux-x64 ${tarPath}`.cwd(
-                cgToolDir
-            );
-            await $`chmod +x ${localBin}`;
+            await extractArchive(archivePath, cgToolDir);
+            flattenExtractedDir(cgToolDir);
+            renameSync(join(cgToolDir, binName), localBin);
+            await chmodIfUnix(localBin);
         } catch (e) {
             return { success: false, message: `Error instalando CodeGraph: ${e}` };
         }
@@ -355,7 +540,7 @@ export async function installCodeGraphComponent(toolsDir: string, projectRoot: s
         return { success: false, message: `CodeGraph descargado pero init falló: ${e}` };
     }
 
-    return { success: true, message: 'CodeGraph instalado e inicializado (.pi/bin/codegraph)' };
+    return { success: true, message: `CodeGraph instalado e inicializado (.pi/bin/codegraph/${binName})` };
 }
 
 export async function installEngramComponent(toolsDir: string): Promise<ComponentDetail> {
@@ -363,7 +548,8 @@ export async function installEngramComponent(toolsDir: string): Promise<Componen
     const egBinDir = join(egToolDir, 'bin');
     if (!existsSync(egBinDir)) mkdirSync(egBinDir, { recursive: true });
 
-    const localBin = join(egBinDir, 'engram');
+    const binName = getBinaryName('engram');
+    const localBin = join(egBinDir, binName);
     if (existsSync(localBin)) {
         try {
             await $`${localBin} --version`.quiet();
@@ -383,21 +569,22 @@ export async function installEngramComponent(toolsDir: string): Promise<Componen
             const tag = tagData.tag_name || 'v1.20.0';
             const versionNum = tag.replace('v', '');
 
-            const url = `https://github.com/Gentleman-Programming/engram/releases/download/${tag}/engram_${versionNum}_linux_amd64.tar.gz`;
-            const tarPath = join(egToolDir, 'engram.tar.gz');
+            const assetName = getEngramAssetName(versionNum);
+            const url = `https://github.com/Gentleman-Programming/engram/releases/download/${tag}/${assetName}`;
+            const archivePath = join(egToolDir, assetName);
 
-            await downloadFile(url, tarPath, 50_000_000);
+            await downloadFile(url, archivePath, 50_000_000);
 
-            await $`tar -xzf ${tarPath} -C ${egToolDir} && mv ${egToolDir}/engram ${localBin} && rm ${tarPath}`.cwd(
-                egToolDir
-            );
-            await $`chmod +x ${localBin}`;
+            await extractArchive(archivePath, egToolDir);
+            flattenExtractedDir(egToolDir);
+            renameSync(join(egToolDir, binName), localBin);
+            await chmodIfUnix(localBin);
         } catch (e) {
             return { success: false, message: `Error instalando Engram: ${e}` };
         }
     }
 
-    return { success: true, message: 'Engram instalado (.pi/bin/engram)' };
+    return { success: true, message: `Engram instalado (.pi/bin/engram/${binName})` };
 }
 
 export function installAgentsComponent(piDir: PiStackPaths, manifest: Manifest): ComponentDetail {
@@ -487,6 +674,8 @@ export function installControllerComponent(piDir: PiStackPaths): ComponentDetail
 
 export function installMcpConfigComponent(piDir: PiStackPaths, manifest: Manifest): ComponentDetail {
     try {
+        const cgBinName = getBinaryName('codegraph');
+        const egBinName = getBinaryName('engram');
         const mcpConfig = {
             settings: { toolPrefix: 'none' },
             mcpServers: {
@@ -497,13 +686,13 @@ export function installMcpConfigComponent(piDir: PiStackPaths, manifest: Manifes
                     directTools: true,
                 },
                 codegraph: {
-                    command: '.pi/bin/codegraph/bin/codegraph',
+                    command: `.pi/bin/codegraph/bin/${cgBinName}`,
                     args: ['serve', '--mcp'],
                     lifecycle: 'lazy',
                     directTools: true,
                 },
                 engram: {
-                    command: '.pi/bin/engram/bin/engram',
+                    command: `.pi/bin/engram/bin/${egBinName}`,
                     args: ['mcp'],
                     lifecycle: 'lazy',
                     directTools: ['mem_context', 'mem_search', 'mem_save', 'mem_session_summary'],
@@ -631,7 +820,7 @@ export async function installPiStack(
     }
 
     // Migración: PI 0.35+ deprecó .pi/tools/ (custom tools → extensions) y emite
-    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.9.
+    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.10.
     migrateLegacyToolsDir(root);
 
     const piDir = createPiDir(root);
@@ -642,13 +831,18 @@ export async function installPiStack(
 
     const details: Record<string, ComponentDetail> = {};
 
-    // 1. Verificar PI (precondición de todo el stack)
+    // 1. Verificar PI (precondición de todo el stack) — ofrecer instalarlo si falta
     try {
         const piVersion = await $`pi --version`.text();
         details.pi = { success: true, message: `PI detectado: ${piVersion.trim()}` };
     } catch {
-        details.pi = { success: false, message: 'PI no encontrado. Instalá PI primero.' };
-        return { success: false, message: 'PI no instalado', details };
+        const piReady = await installPiIfNeeded();
+        if (!piReady) {
+            details.pi = { success: false, message: 'PI no encontrado. Instalá PI primero.' };
+            return { success: false, message: 'PI no instalado', details };
+        }
+        const piVersion = await $`pi --version`.text();
+        details.pi = { success: true, message: `PI instalado: ${piVersion.trim()}` };
     }
 
     // 2. Instalar componentes seleccionados

@@ -3,7 +3,11 @@ import type { Model, Context, SimpleStreamOptions, AssistantMessageEventStream }
 // Cliente HTTP puro contra un OpenCode Server que ya está corriendo.
 // NO usamos createOpencode: ese hace cross-spawn de "opencode serve" en
 // puerto 4096 por default y choca con cualquier server manual abierto.
-import { createOpencodeClient } from '@opencode-ai/sdk';
+//
+// ⚠️ La conexión con OpenCode es OPCIONAL: el SDK (@opencode-ai/sdk) se importa
+// de forma dinámica y lazy solo cuando se usa el provider. Si no está instalado,
+// esta extensión carga igual y el provider devuelve un mensaje de error claro
+// (antes, el import estático rompía TODO el load con "Cannot find module").
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 
 // Config desde env vars
@@ -24,20 +28,55 @@ const MiMo_V2_5_Free = {
     },
 };
 
-// Cliente singleton
-let opencodeClient: ReturnType<typeof createOpencodeClient> | null = null;
+// Cliente singleton (lazy). `any` a propósito: el tipo de createOpencodeClient
+// solo existe si el SDK está instalado, y acá es opcional.
+let opencodeClient: any = null;
+let sdkMissing = false;
 
-function getClient() {
+async function getClient(): Promise<any> {
     if (!opencodeClient) {
-        // console.log('[opencode-server] Connecting to existing server at:', SERVER_URL);
-        // console.log('[opencode-server] Auth:', SERVER_PASSWORD ? 'Bearer token configured' : 'No auth (unsecured)');
+        if (sdkMissing) return null; // ya falló antes — no reintentar
+        try {
+            const { createOpencodeClient } = await import('@opencode-ai/sdk');
+            // console.log('[opencode-server] Connecting to existing server at:', SERVER_URL);
+            // console.log('[opencode-server] Auth:', SERVER_PASSWORD ? 'Bearer token configured' : 'No auth (unsecured)');
 
-        opencodeClient = createOpencodeClient({
-            baseUrl: SERVER_URL,
-            headers: SERVER_PASSWORD ? { Authorization: `Bearer ${SERVER_PASSWORD}` } : undefined,
-        });
+            opencodeClient = createOpencodeClient({
+                baseUrl: SERVER_URL,
+                headers: SERVER_PASSWORD ? { Authorization: `Bearer ${SERVER_PASSWORD}` } : undefined,
+            });
+        } catch {
+            sdkMissing = true;
+            console.warn('[opencode-server] @opencode-ai/sdk no está instalado. Conectarse a OpenCode es opcional:');
+            console.warn('  Para habilitarlo: bun add -d @opencode-ai/sdk  (o: npm install -D @opencode-ai/sdk)');
+            return null;
+        }
     }
     return opencodeClient;
+}
+
+/** Emite un stream de error bien formado (Pi espera start → text_* → done). */
+function makeErrorStream(message: string): AssistantMessageEventStream {
+    const stream = createAssistantMessageEventStream();
+    const finalMessage = {
+        role: 'assistant' as const,
+        content: [{ type: 'text' as const, text: message }],
+        stopReason: 'error' as const,
+        usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            cost: { input: 0, output: 0, total: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+    };
+    stream.push({ type: 'start', partial: finalMessage });
+    stream.push({ type: 'text_start', contentIndex: 0, partial: finalMessage });
+    stream.push({ type: 'text_delta', contentIndex: 0, delta: message, partial: finalMessage });
+    stream.push({ type: 'text_end', contentIndex: 0, content: message, partial: finalMessage });
+    stream.push({ type: 'done', reason: 'error', message: finalMessage });
+    stream.end(finalMessage);
+    return stream;
 }
 
 async function streamOpenCode(
@@ -45,7 +84,15 @@ async function streamOpenCode(
     context: Context,
     options?: SimpleStreamOptions
 ): Promise<AssistantMessageEventStream> {
-    const client = getClient();
+    const client = await getClient();
+
+    if (!client) {
+        return makeErrorStream(
+            'Error: @opencode-ai/sdk no está instalado en este proyecto.\n' +
+                'Conectarse a OpenCode es opcional. Para habilitarlo:\n' +
+                '  bun add -d @opencode-ai/sdk   (o: npm install -D @opencode-ai/sdk)'
+        );
+    }
 
     /*
     console.log('[opencode-server] streamOpenCode called', {
