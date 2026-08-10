@@ -403,8 +403,11 @@ export async function installEngramComponent(toolsDir: string): Promise<Componen
 export function installAgentsComponent(piDir: PiStackPaths, manifest: Manifest): ComponentDetail {
     try {
         for (const agent of manifest.agents) {
-            const srcPath = join(ASSETS_DIR, agent.file);
-            const destPath = join(piDir.root, agent.file);
+            // agent.file ya incluye "assets/" (ej: "assets/AGENTS.md")
+            // ASSETS_DIR ya apunta a la carpeta assets, así que usamos solo el nombre del archivo
+            const fileName = agent.file.replace(/^assets\//, '');
+            const srcPath = join(ASSETS_DIR, fileName);
+            const destPath = join(piDir.root, fileName);
             copyFileSync(srcPath, destPath);
             const content = readFileSync(srcPath, 'utf-8');
             const hash = sha256(content);
@@ -628,7 +631,7 @@ export async function installPiStack(
     }
 
     // Migración: PI 0.35+ deprecó .pi/tools/ (custom tools → extensions) y emite
-    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.7.
+    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.9.
     migrateLegacyToolsDir(root);
 
     const piDir = createPiDir(root);

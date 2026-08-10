@@ -67,17 +67,32 @@ const skills: unknown[] = [];
 const mcpServers: unknown[] = [];
 const models: unknown[] = [];
 
-// AGENTS.md → agent
-const agentsMd = join(ASSETS_DIR, "AGENTS.md");
-if (existsSync(agentsMd)) {
-  const content = readFileSync(agentsMd, "utf-8");
-  agents.push({
+// AGENTS.md + APPEND_SYSTEM.md → agents
+const agentDefs = [
+  {
     name: "pistack",
     file: "assets/AGENTS.md",
     description: "Orquestador PiStack para PI - 3 niveles, controller MCP, skills curadas, seguridad, robustez",
-    version,
-    sha256: sha256(content),
-  });
+  },
+  {
+    name: "append-system",
+    file: "assets/APPEND_SYSTEM.md",
+    description: "Reglas PiStack que sobreescriben el system prompt default de PI (CodeGraph-first, Engram mandatory, Controller default)",
+  },
+];
+
+for (const def of agentDefs) {
+  const agentPath = join(ASSETS_DIR, def.file.replace(/^assets\//, ""));
+  if (existsSync(agentPath)) {
+    const content = readFileSync(agentPath, "utf-8");
+    agents.push({
+      name: def.name,
+      file: def.file,
+      description: def.description,
+      version,
+      sha256: sha256(content),
+    });
+  }
 }
 
 // extensions/*.ts → commands
