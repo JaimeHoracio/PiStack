@@ -340,19 +340,28 @@ async function extractArchive(archivePath: string, destDir: string): Promise<voi
 }
 
 /**
- * Si el directorio extraído contiene una única subcarpeta (ej: codegraph-linux-x64/),
- * la aplana moviendo su contenido al nivel superior.
+ * Si el directorio extraído contiene una única subcarpeta de archive
+ * (ej: codegraph-linux-x64/), la aplana moviendo su contenido al nivel superior.
+ *
+ * Ignora directorios pre-existentes (ej: bin/ creado antes de la extracción)
+ * para no confundirlos con la estructura del archive.
  */
 function flattenExtractedDir(destDir: string): void {
     const entries = readdirSync(destDir);
-    if (entries.length === 1) {
-        const only = join(destDir, entries[0]);
-        if (statSync(only).isDirectory()) {
-            for (const inner of readdirSync(only)) {
-                renameSync(join(only, inner), join(destDir, inner));
-            }
-            rmSync(only, { recursive: true, force: true });
+    // Buscar la carpeta del archive: debe ser la única entrada que es directorio
+    // y cuyo nombre sugiere que viene de un archive (contiene '-' o '_' con plataforma).
+    // Si hay exactamente 1 directorio y el resto son archivos o no existen, aplanar.
+    const dirs = entries.filter((e) => {
+        const full = join(destDir, e);
+        return statSync(full).isDirectory();
+    });
+
+    if (dirs.length === 1) {
+        const only = join(destDir, dirs[0]);
+        for (const inner of readdirSync(only)) {
+            renameSync(join(only, inner), join(destDir, inner));
         }
+        rmSync(only, { recursive: true, force: true });
     }
 }
 
@@ -498,7 +507,6 @@ export async function installPiMcpAdapterComponent(): Promise<ComponentDetail> {
 export async function installCodeGraphComponent(toolsDir: string, projectRoot: string): Promise<ComponentDetail> {
     const cgToolDir = join(toolsDir, 'codegraph');
     const cgBinDir = join(cgToolDir, 'bin');
-    if (!existsSync(cgBinDir)) mkdirSync(cgBinDir, { recursive: true });
 
     const binName = getBinaryName('codegraph');
     const localBin = join(cgBinDir, binName);
@@ -526,13 +534,19 @@ export async function installCodeGraphComponent(toolsDir: string, projectRoot: s
 
             await extractArchive(archivePath, cgToolDir);
             flattenExtractedDir(cgToolDir);
-            // v1.5.0+ empaqueta el binario en bin/<name> (runtime + kernel en lib/).
-            // Solo mover si el binario quedó en la raíz (estructura antigua).
-            const extractedBin = join(cgToolDir, binName);
-            if (existsSync(extractedBin)) {
-                renameSync(extractedBin, localBin);
+
+            // Buscar el binario en las ubicaciones posibles tras flatten:
+            // 1. En bin/<name> (v1.5.0+, estructura estándar del archive)
+            // 2. En la raíz (archives viejos o flatten directo)
+            if (!existsSync(cgBinDir)) mkdirSync(cgBinDir, { recursive: true });
+            const binInBinDir = join(cgBinDir, binName);
+            const binInRoot = join(cgToolDir, binName);
+            if (existsSync(binInBinDir)) {
+                // Ya está en bin/ — nada que mover
+            } else if (existsSync(binInRoot)) {
+                renameSync(binInRoot, binInBinDir);
             }
-            await chmodIfUnix(localBin);
+            await chmodIfUnix(binInBinDir);
         } catch (e) {
             return { success: false, message: `Error instalando CodeGraph: ${e}` };
         }
@@ -551,7 +565,6 @@ export async function installCodeGraphComponent(toolsDir: string, projectRoot: s
 export async function installEngramComponent(toolsDir: string): Promise<ComponentDetail> {
     const egToolDir = join(toolsDir, 'engram');
     const egBinDir = join(egToolDir, 'bin');
-    if (!existsSync(egBinDir)) mkdirSync(egBinDir, { recursive: true });
 
     const binName = getBinaryName('engram');
     const localBin = join(egBinDir, binName);
@@ -582,12 +595,19 @@ export async function installEngramComponent(toolsDir: string): Promise<Componen
 
             await extractArchive(archivePath, egToolDir);
             flattenExtractedDir(egToolDir);
-            // Mismo patrón que CodeGraph: mover solo si el binario quedó en la raíz.
-            const extractedBin = join(egToolDir, binName);
-            if (existsSync(extractedBin)) {
-                renameSync(extractedBin, localBin);
+
+            // Buscar el binario en las ubicaciones posibles tras flatten:
+            // 1. En bin/<name> (estructura estándar del archive)
+            // 2. En la raíz (flatten directo)
+            if (!existsSync(egBinDir)) mkdirSync(egBinDir, { recursive: true });
+            const binInBinDir = join(egBinDir, binName);
+            const binInRoot = join(egToolDir, binName);
+            if (existsSync(binInBinDir)) {
+                // Ya está en bin/ — nada que mover
+            } else if (existsSync(binInRoot)) {
+                renameSync(binInRoot, binInBinDir);
             }
-            await chmodIfUnix(localBin);
+            await chmodIfUnix(binInBinDir);
         } catch (e) {
             return { success: false, message: `Error instalando Engram: ${e}` };
         }
@@ -829,7 +849,7 @@ export async function installPiStack(
     }
 
     // Migración: PI 0.35+ deprecó .pi/tools/ (custom tools → extensions) y emite
-    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.11.
+    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.12.
     migrateLegacyToolsDir(root);
 
     const piDir = createPiDir(root);
