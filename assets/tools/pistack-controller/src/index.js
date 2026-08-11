@@ -3,12 +3,12 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
-import { readFileSync, writeFileSync, renameSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, readdirSync, unlinkSync, statSync } from 'node:fs';
 import { dirname, basename } from 'node:path';
 
-const MAX_TASKS = 50;
-const MAX_SNAPSHOT_JSON_LENGTH = 100 * 1024; // 100KB per snapshot serialized
-const MAX_STATE_FILE_SIZE = 1024 * 1024; // 1MB hard cap for the entire state file
+const MAX_TASKS = 100;
+const MAX_SNAPSHOT_JSON_LENGTH = 50 * 1024; // 50KB per snapshot serialized (O3: essential fields only)
+const MAX_STATE_FILE_SIZE = 2 * 1024 * 1024; // 2MB hard cap for the entire state file
 
 /**
  * Safe JSON.stringify that won't throw on circular references.
@@ -60,6 +60,19 @@ function cleanupTmpFiles(statePath) {
     }
 }
 
+/**
+ * O6 — Fast fingerprint using mtime + size instead of full SHA-256.
+ * Use for change detection during validate_edit; SHA-256 only for final verification.
+ */
+function fastFingerprint(filePath) {
+    try {
+        const stat = statSync(filePath);
+        return `${stat.mtimeMs}-${stat.size}`;
+    } catch {
+        return null;
+    }
+}
+
 const STATES = Object.freeze({
     INTERPRETATION_PENDING: 'INTERPRETATION_PENDING',
     CLARIFICATION_PENDING: 'CLARIFICATION_PENDING',
@@ -89,9 +102,86 @@ const DEFAULT_STATE = Object.freeze({
     tasks: {},
     fileFingerprints: {},
     error: null,
+    audit: [],
 });
 
+/**
+ * O4 — Pre-computed transition table (immutable). Key: `${via}:${choiceOrMode}`.
+ */
+const TRANSITION_TABLE = Object.freeze({
+    INTERPRETATION_PENDING: Object.freeze([
+        Object.freeze({ to: 'CLARIFICATION_PENDING', via: 'request_clarification' }),
+        Object.freeze({ to: 'DISCOVERY', via: 'proceed_to_discovery' }),
+        Object.freeze({ to: 'ROUTE_DECISION_PENDING', via: 'record_discovery' }),
+        Object.freeze({ to: 'BLOCKED', via: 'block' }),
+    ]),
+    CLARIFICATION_PENDING: Object.freeze([
+        Object.freeze({ to: 'DISCOVERY', via: 'record_clarification' }),
+        Object.freeze({ to: 'BLOCKED', via: 'block' }),
+        Object.freeze({ to: 'BLOCKED', via: 'abandon' }),
+    ]),
+    DISCOVERY: Object.freeze([
+        Object.freeze({ to: 'LEVEL_RESOLVED', via: 'record_discovery' }),
+        Object.freeze({ to: 'BLOCKED', via: 'block' }),
+        Object.freeze({ to: 'BLOCKED', via: 'abandon' }),
+    ]),
+    LEVEL_RESOLVED: Object.freeze([
+        Object.freeze({ to: 'ROUTE_DECISION_PENDING', via: 'route_decision_pending' }),
+        Object.freeze({ to: 'BLOCKED', via: 'block' }),
+    ]),
+    ROUTE_DECISION_PENDING: Object.freeze([
+        Object.freeze({ to: 'SPECIFICATION', via: 'consume_route_decision', choice: 'SPEC' }),
+        Object.freeze({ to: 'EXECUTION_ANALYSIS', via: 'consume_route_decision', choice: 'DIRECT' }),
+        Object.freeze({ to: 'BLOCKED', via: 'block' }),
+    ]),
+    SPECIFICATION: Object.freeze([
+        Object.freeze({ to: 'EXECUTION_ANALYSIS', via: 'spec_complete' }),
+        Object.freeze({ to: 'BLOCKED', via: 'block' }),
+        Object.freeze({ to: 'BLOCKED', via: 'abandon' }),
+    ]),
+    EXECUTION_ANALYSIS: Object.freeze([
+        Object.freeze({ to: 'EXECUTION_DECISION_PENDING', via: 'record_execution_analysis' }),
+        Object.freeze({ to: 'BLOCKED', via: 'block' }),
+        Object.freeze({ to: 'BLOCKED', via: 'abandon' }),
+    ]),
+    EXECUTION_DECISION_PENDING: Object.freeze([
+        Object.freeze({ to: 'EXECUTING_INLINE', via: 'consume_execution_decision', mode: 'INLINE' }),
+        Object.freeze({ to: 'EXECUTING_SUBAGENTS', via: 'consume_execution_decision', mode: 'SUBAGENT_DRIVEN' }),
+        Object.freeze({ to: 'BLOCKED', via: 'block' }),
+    ]),
+    EXECUTING_INLINE: Object.freeze([
+        Object.freeze({ to: 'SYNC', via: 'implementation_complete' }),
+        Object.freeze({ to: 'BLOCKED', via: 'block' }),
+    ]),
+    EXECUTING_SUBAGENTS: Object.freeze([
+        Object.freeze({ to: 'SYNC', via: 'implementation_complete' }),
+        Object.freeze({ to: 'BLOCKED', via: 'block' }),
+    ]),
+    BLOCKED: Object.freeze([
+        Object.freeze({ to: 'INTERPRETATION_PENDING', via: 'replan' }),
+        Object.freeze({ to: 'DONE', via: 'abandon' }),
+    ]),
+    SYNC: Object.freeze([
+        Object.freeze({ to: 'DONE', via: 'sync_complete' }),
+        Object.freeze({ to: 'BLOCKED', via: 'block' }),
+    ]),
+    DONE: Object.freeze([]),
+});
+
+const ALLOWED_TRANSITIONS = Object.freeze(
+    Object.fromEntries(
+        Object.entries(TRANSITION_TABLE).map(([state, transitions]) => [
+            state,
+            new Map(transitions.map((t) => [`${t.via}:${t.choice || t.mode || ''}`, t.to])),
+        ])
+    )
+);
+
 class PiStackController {
+    static get ALLOWED_TRANSITIONS() {
+        return ALLOWED_TRANSITIONS;
+    }
+
     #statePath;
     #state;
     #loaded;
@@ -115,6 +205,7 @@ class PiStackController {
             return;
         }
         // Try primary state file
+        let primaryError = null;
         try {
             const raw = readFileSync(this.#statePath, 'utf8');
             if (raw.length > MAX_STATE_FILE_SIZE) throw new Error(`State file too large: ${raw.length} bytes`);
@@ -122,6 +213,7 @@ class PiStackController {
             this.#loaded = true;
             return;
         } catch (err) {
+            primaryError = err;
             log('warn:load_primary_failed', { error: err.message });
         }
         // Fallback: try .backup
@@ -133,19 +225,23 @@ class PiStackController {
             log('warn:state_restored_from_backup');
             this.#loaded = true;
             return;
-        } catch {
+        } catch (backupErr) {
             // No backup either — set error state instead of silent reset
+            // ENOENT (fresh install / first run) → clean default state, no error
+            const isMissing = backupErr && backupErr.code === 'ENOENT';
+            const detail = (backupErr && backupErr.message) || (primaryError && primaryError.message) || 'unknown';
             this.#state = {
                 ...DEFAULT_STATE,
-                error: `State file corrupt: ${err.message}. No backup available. State reset to default.`,
+                ...(isMissing ? {} : { error: `State file corrupt: ${detail}. No backup available. State reset to default.` }),
             };
-            log('warn:state_reset', { error: err.message });
+            if (!isMissing) log('warn:state_reset', { error: detail });
         }
         this.#loaded = true;
     }
 
     #persist() {
         if (!this.#statePath) return;
+        this.#flushAudit();
         const dir = dirname(this.#statePath);
         mkdirSync(dir, { recursive: true });
         const serialized = safeJsonStringify(this.#state, true);
@@ -194,6 +290,60 @@ class PiStackController {
         log('warn:tasks_trimmed', { before: entries.length, after: MAX_TASKS });
     }
 
+    /**
+     * O3 — Compresses a CodeGraph snapshot to essential fields only.
+     * Symbol names + blast radius summary + file count, NOT full source.
+     * Caps serialized size at MAX_SNAPSHOT_JSON_LENGTH by dropping call paths first.
+     */
+    #snapshotCodegraph(fullResult) {
+        if (!fullResult || typeof fullResult !== 'object') return fullResult;
+        const snapshot = {
+            symbols: (fullResult.symbols || []).map((s) => ({
+                name: s && s.name,
+                kind: s && s.kind,
+                file: s && s.file,
+            })),
+            blastRadius: fullResult.blastRadius,
+            fileCount: Array.isArray(fullResult.files) ? fullResult.files.length : 0,
+            callPaths: (fullResult.callPaths || []).map((p) => p.map((s) => s && s.name)),
+            timestamp: Date.now(),
+        };
+        // Enforce MAX_SNAPSHOT_JSON_LENGTH: drop callPaths first, then trim symbols
+        if (safeJsonStringify(snapshot).length > MAX_SNAPSHOT_JSON_LENGTH) {
+            delete snapshot.callPaths;
+        }
+        if (safeJsonStringify(snapshot).length > MAX_SNAPSHOT_JSON_LENGTH && Array.isArray(snapshot.symbols)) {
+            snapshot.symbols = snapshot.symbols.slice(0, 200);
+        }
+        return snapshot;
+    }
+
+    /**
+     * O5 — Appends an audit entry to an in-memory buffer.
+     * Buffer is flushed inside #persist() so no entries are lost on restart
+     * and the array operations (push + slice) happen once per persist, not per call.
+     */
+    #auditBuffer = [];
+
+    #audit(phase, decision, reasoning) {
+        this.#auditBuffer.push({
+            timestamp: new Date().toISOString(),
+            phase,
+            decision: decision || null,
+            reasoning: reasoning || null,
+        });
+    }
+
+    #flushAudit() {
+        if (this.#auditBuffer.length === 0) return;
+        if (!this.#state.audit) this.#state.audit = [];
+        this.#state.audit.push(...this.#auditBuffer);
+        this.#auditBuffer = [];
+        if (this.#state.audit.length > 100) {
+            this.#state.audit = this.#state.audit.slice(-100);
+        }
+    }
+
     #transition(to, changes = {}) {
         this.#state.revision++;
         this.#state.state = to;
@@ -203,73 +353,8 @@ class PiStackController {
     }
 
     #isAllowedTransition(from, via, choiceOrMode) {
-        const table = {
-            INTERPRETATION_PENDING: [
-                { to: 'CLARIFICATION_PENDING', via: 'request_clarification' },
-                { to: 'DISCOVERY', via: 'proceed_to_discovery' },
-                { to: 'ROUTE_DECISION_PENDING', via: 'record_discovery' },
-                { to: 'BLOCKED', via: 'block' },
-            ],
-            CLARIFICATION_PENDING: [
-                { to: 'DISCOVERY', via: 'record_clarification' },
-                { to: 'BLOCKED', via: 'block' },
-                { to: 'BLOCKED', via: 'abandon' },
-            ],
-            DISCOVERY: [
-                { to: 'LEVEL_RESOLVED', via: 'record_discovery' },
-                { to: 'BLOCKED', via: 'block' },
-                { to: 'BLOCKED', via: 'abandon' },
-            ],
-            LEVEL_RESOLVED: [
-                { to: 'ROUTE_DECISION_PENDING', via: 'route_decision_pending' },
-                { to: 'BLOCKED', via: 'block' },
-            ],
-            ROUTE_DECISION_PENDING: [
-                { to: 'SPECIFICATION', via: 'consume_route_decision', choice: 'SPEC' },
-                { to: 'EXECUTION_ANALYSIS', via: 'consume_route_decision', choice: 'DIRECT' },
-                { to: 'BLOCKED', via: 'block' },
-            ],
-            SPECIFICATION: [
-                { to: 'EXECUTION_ANALYSIS', via: 'spec_complete' },
-                { to: 'BLOCKED', via: 'block' },
-                { to: 'BLOCKED', via: 'abandon' },
-            ],
-            EXECUTION_ANALYSIS: [
-                { to: 'EXECUTION_DECISION_PENDING', via: 'analysis_complete' },
-                { to: 'BLOCKED', via: 'block' },
-                { to: 'BLOCKED', via: 'abandon' },
-            ],
-            EXECUTION_DECISION_PENDING: [
-                { to: 'EXECUTING_INLINE', via: 'consume_execution_decision', mode: 'INLINE' },
-                { to: 'EXECUTING_SUBAGENTS', via: 'consume_execution_decision', mode: 'SUBAGENT_DRIVEN' },
-                { to: 'BLOCKED', via: 'block' },
-            ],
-            EXECUTING_INLINE: [
-                { to: 'SYNC', via: 'implementation_complete' },
-                { to: 'BLOCKED', via: 'block' },
-            ],
-            EXECUTING_SUBAGENTS: [
-                { to: 'SYNC', via: 'implementation_complete' },
-                { to: 'BLOCKED', via: 'block' },
-            ],
-            BLOCKED: [
-                { to: 'INTERPRETATION_PENDING', via: 'replan' },
-                { to: 'DONE', via: 'abandon' },
-            ],
-            SYNC: [
-                { to: 'DONE', via: 'sync_complete' },
-                { to: 'BLOCKED', via: 'block' },
-            ],
-            DONE: [],
-        };
-        const transitions = table[from] || [];
-        for (const t of transitions) {
-            if (t.via !== via) continue;
-            if (t.choice !== undefined && t.choice !== choiceOrMode) continue;
-            if (t.mode !== undefined && t.mode !== choiceOrMode) continue;
-            return t.to;
-        }
-        return null;
+        const key = `${via}:${choiceOrMode || ''}`;
+        return PiStackController.ALLOWED_TRANSITIONS[from]?.get(key) ?? null;
     }
 
     async startRequest({ requestId, changeId } = {}) {
@@ -317,10 +402,14 @@ class PiStackController {
         const to = this.#isAllowedTransition(this.#state.state, 'record_discovery');
         if (!to) return { error: `Cannot record discovery from state ${this.#state.state}` };
         if (!['0', '0+1', '1+'].includes(level)) return { error: `Invalid level: ${level}` };
+        this.#audit('discovery', `level:${level}`, `Route decision: ${routeDecisionId || 'auto'}`);
         this.#transition(to, {
             routeDecisionId: routeDecisionId || 'route-' + Date.now(),
             routeChoice: null,
-            snapshots: { ...this.#state.snapshots, codegraph: snapshot || this.#state.snapshots.codegraph },
+            snapshots: {
+                ...this.#state.snapshots,
+                codegraph: this.#snapshotCodegraph(snapshot || this.#state.snapshots.codegraph),
+            },
         });
         const defaultChoice = level === '1+' ? 'SPEC' : 'DIRECT';
         return {
@@ -359,12 +448,17 @@ class PiStackController {
 
     async recordExecutionAnalysis({ executionDecisionId, snapshot } = {}) {
         this.#load();
-        const to = this.#isAllowedTransition(this.#state.state, 'analysis_complete');
+        const to = this.#isAllowedTransition(this.#state.state, 'record_execution_analysis');
         if (!to) return { error: `Cannot record execution analysis from state ${this.#state.state}` };
+        this.#audit(
+            'execution_analysis',
+            `decision:${executionDecisionId || 'auto'}`,
+            snapshot ? 'With CodeGraph snapshot' : 'No snapshot'
+        );
         this.#transition('EXECUTION_DECISION_PENDING', {
             executionDecisionId: executionDecisionId || 'exec-' + Date.now(),
             executionMode: null,
-            snapshots: { ...this.#state.snapshots, execution: snapshot || null },
+            snapshots: { ...this.#state.snapshots, execution: this.#snapshotCodegraph(snapshot || null) },
         });
         return {
             state: this.#state.state,
@@ -410,6 +504,7 @@ class PiStackController {
         this.#load();
         const to = this.#isAllowedTransition(this.#state.state, 'block');
         if (!to) return { error: `Cannot block from state ${this.#state.state}` };
+        this.#audit('blocked', reason || 'Blocked', `From state: ${this.#state.state}`);
         this.#transition(to, { error: reason || 'Blocked' });
         return { state: this.#state.state, revision: this.#state.revision };
     }
@@ -511,6 +606,13 @@ class PiStackController {
         if (filePath && fileHash) {
             if (!this.#state.fileFingerprints) this.#state.fileFingerprints = {};
             this.#state.fileFingerprints[filePath] = fileHash;
+        } else if (filePath) {
+            // O6 — fast fingerprint (mtime+size) when no SHA-256 was provided
+            const fp = fastFingerprint(filePath);
+            if (fp) {
+                if (!this.#state.fileFingerprints) this.#state.fileFingerprints = {};
+                this.#state.fileFingerprints[filePath] = fp;
+            }
         }
         this.#trimTasks();
         this.#persist();
@@ -556,8 +658,20 @@ function safeHandler(fn) {
 
 const server = new McpServer({
     name: 'pistack-controller',
-    version: '0.5.10',
+    version: '0.5.11',
 });
+
+server.registerTool(
+    'ping',
+    {
+        description: 'Health check — returns pong if controller is alive.',
+        inputSchema: z.object({}),
+    },
+    safeHandler(async () => {
+        const s = await controller.getState();
+        return { pong: true, state: s.state, revision: s.revision };
+    })
+);
 
 server.registerTool(
     'start_request',

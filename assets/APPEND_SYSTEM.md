@@ -60,3 +60,15 @@ Log every phase to console:
   Task execution, Task completion, Error encountered, Waiting for input
 
 Format: `[timestamp] [phase] [message]`
+
+### Official pi.dev packages — Decision
+
+The 4 official packages at https://pi.dev/packages are **NOT installed by default**:
+- `pi-code-graph` v0.16.0 → **REJECTED** (requires Docker + Memgraph + OpenRouter; local Rust binary v1.5.0 is more efficient)
+- `gentle-engram` v0.1.10 → **REJECTED** (cloud-first; PiStack is local-first by design)
+- `openspec-pi` v0.1.0 → **OPTIONAL upgrade path** (auto-context injection + 3 extra skills; requires `@fission-ai/openspec` CLI global)
+- `pi-superpowers` v0.2.0 → **OPTIONAL upgrade path** (8 extra skills; WARNING: its `plan_tracker` extension duplicates the controller MCP — disable via `disabledExtensions` if installed)
+
+See `README.md` §"Paquetes oficiales en pi.dev (evaluados 2026-08-11)" for installation instructions.
+
+**Inviolable rule:** The controller MCP (`pistack-controller`) is the **single source of truth** for tasks, state, and edit validation. External packages must NOT create their own state machines, must NOT override `validate_edit`, and must NOT bypass `complete_task`.

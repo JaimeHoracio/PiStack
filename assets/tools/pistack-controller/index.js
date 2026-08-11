@@ -12323,21 +12323,21 @@ var require_errors = /* @__PURE__ */ __commonJSMin((exports) => {
   function extendErrors({ gen, keyword, schemaValue, data, errsCount, it }) {
     if (errsCount === undefined)
       throw new Error("ajv implementation error");
-    const err2 = gen.name("err");
+    const err = gen.name("err");
     gen.forRange("i", errsCount, names_1.default.errors, (i) => {
-      gen.const(err2, (0, codegen_1._)`${names_1.default.vErrors}[${i}]`);
-      gen.if((0, codegen_1._)`${err2}.instancePath === undefined`, () => gen.assign((0, codegen_1._)`${err2}.instancePath`, (0, codegen_1.strConcat)(names_1.default.instancePath, it.errorPath)));
-      gen.assign((0, codegen_1._)`${err2}.schemaPath`, (0, codegen_1.str)`${it.errSchemaPath}/${keyword}`);
+      gen.const(err, (0, codegen_1._)`${names_1.default.vErrors}[${i}]`);
+      gen.if((0, codegen_1._)`${err}.instancePath === undefined`, () => gen.assign((0, codegen_1._)`${err}.instancePath`, (0, codegen_1.strConcat)(names_1.default.instancePath, it.errorPath)));
+      gen.assign((0, codegen_1._)`${err}.schemaPath`, (0, codegen_1.str)`${it.errSchemaPath}/${keyword}`);
       if (it.opts.verbose) {
-        gen.assign((0, codegen_1._)`${err2}.schema`, schemaValue);
-        gen.assign((0, codegen_1._)`${err2}.data`, data);
+        gen.assign((0, codegen_1._)`${err}.schema`, schemaValue);
+        gen.assign((0, codegen_1._)`${err}.data`, data);
       }
     });
   }
   exports.extendErrors = extendErrors;
   function addError(gen, errObj) {
-    const err2 = gen.const("err", errObj);
-    gen.if((0, codegen_1._)`${names_1.default.vErrors} === null`, () => gen.assign(names_1.default.vErrors, (0, codegen_1._)`[${err2}]`), (0, codegen_1._)`${names_1.default.vErrors}.push(${err2})`);
+    const err = gen.const("err", errObj);
+    gen.if((0, codegen_1._)`${names_1.default.vErrors} === null`, () => gen.assign(names_1.default.vErrors, (0, codegen_1._)`[${err}]`), (0, codegen_1._)`${names_1.default.vErrors}.push(${err})`);
     gen.code((0, codegen_1._)`${names_1.default.errors}++`);
   }
   function returnErrors(it, errs) {
@@ -19974,11 +19974,11 @@ var StdioServerTransport = class {
 };
 
 // assets/tools/pistack-controller/src/index.js
-import { readFileSync, writeFileSync, renameSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, mkdirSync, readdirSync, unlinkSync, statSync } from "node:fs";
 import { dirname, basename } from "node:path";
-var MAX_TASKS = 50;
-var MAX_SNAPSHOT_JSON_LENGTH = 100 * 1024;
-var MAX_STATE_FILE_SIZE = 1024 * 1024;
+var MAX_TASKS = 100;
+var MAX_SNAPSHOT_JSON_LENGTH = 50 * 1024;
+var MAX_STATE_FILE_SIZE = 2 * 1024 * 1024;
 function safeJsonStringify(obj, pretty = false) {
   const seen = new WeakSet;
   try {
@@ -20014,6 +20014,14 @@ function cleanupTmpFiles(statePath) {
     }
   } catch {}
 }
+function fastFingerprint(filePath) {
+  try {
+    const stat = statSync(filePath);
+    return `${stat.mtimeMs}-${stat.size}`;
+  } catch {
+    return null;
+  }
+}
 var STATES = Object.freeze({
   INTERPRETATION_PENDING: "INTERPRETATION_PENDING",
   CLARIFICATION_PENDING: "CLARIFICATION_PENDING",
@@ -20041,10 +20049,77 @@ var DEFAULT_STATE = Object.freeze({
   snapshots: { codegraph: null, execution: null },
   tasks: {},
   fileFingerprints: {},
-  error: null
+  error: null,
+  audit: []
 });
+var TRANSITION_TABLE = Object.freeze({
+  INTERPRETATION_PENDING: Object.freeze([
+    Object.freeze({ to: "CLARIFICATION_PENDING", via: "request_clarification" }),
+    Object.freeze({ to: "DISCOVERY", via: "proceed_to_discovery" }),
+    Object.freeze({ to: "ROUTE_DECISION_PENDING", via: "record_discovery" }),
+    Object.freeze({ to: "BLOCKED", via: "block" })
+  ]),
+  CLARIFICATION_PENDING: Object.freeze([
+    Object.freeze({ to: "DISCOVERY", via: "record_clarification" }),
+    Object.freeze({ to: "BLOCKED", via: "block" }),
+    Object.freeze({ to: "BLOCKED", via: "abandon" })
+  ]),
+  DISCOVERY: Object.freeze([
+    Object.freeze({ to: "LEVEL_RESOLVED", via: "record_discovery" }),
+    Object.freeze({ to: "BLOCKED", via: "block" }),
+    Object.freeze({ to: "BLOCKED", via: "abandon" })
+  ]),
+  LEVEL_RESOLVED: Object.freeze([
+    Object.freeze({ to: "ROUTE_DECISION_PENDING", via: "route_decision_pending" }),
+    Object.freeze({ to: "BLOCKED", via: "block" })
+  ]),
+  ROUTE_DECISION_PENDING: Object.freeze([
+    Object.freeze({ to: "SPECIFICATION", via: "consume_route_decision", choice: "SPEC" }),
+    Object.freeze({ to: "EXECUTION_ANALYSIS", via: "consume_route_decision", choice: "DIRECT" }),
+    Object.freeze({ to: "BLOCKED", via: "block" })
+  ]),
+  SPECIFICATION: Object.freeze([
+    Object.freeze({ to: "EXECUTION_ANALYSIS", via: "spec_complete" }),
+    Object.freeze({ to: "BLOCKED", via: "block" }),
+    Object.freeze({ to: "BLOCKED", via: "abandon" })
+  ]),
+  EXECUTION_ANALYSIS: Object.freeze([
+    Object.freeze({ to: "EXECUTION_DECISION_PENDING", via: "record_execution_analysis" }),
+    Object.freeze({ to: "BLOCKED", via: "block" }),
+    Object.freeze({ to: "BLOCKED", via: "abandon" })
+  ]),
+  EXECUTION_DECISION_PENDING: Object.freeze([
+    Object.freeze({ to: "EXECUTING_INLINE", via: "consume_execution_decision", mode: "INLINE" }),
+    Object.freeze({ to: "EXECUTING_SUBAGENTS", via: "consume_execution_decision", mode: "SUBAGENT_DRIVEN" }),
+    Object.freeze({ to: "BLOCKED", via: "block" })
+  ]),
+  EXECUTING_INLINE: Object.freeze([
+    Object.freeze({ to: "SYNC", via: "implementation_complete" }),
+    Object.freeze({ to: "BLOCKED", via: "block" })
+  ]),
+  EXECUTING_SUBAGENTS: Object.freeze([
+    Object.freeze({ to: "SYNC", via: "implementation_complete" }),
+    Object.freeze({ to: "BLOCKED", via: "block" })
+  ]),
+  BLOCKED: Object.freeze([
+    Object.freeze({ to: "INTERPRETATION_PENDING", via: "replan" }),
+    Object.freeze({ to: "DONE", via: "abandon" })
+  ]),
+  SYNC: Object.freeze([
+    Object.freeze({ to: "DONE", via: "sync_complete" }),
+    Object.freeze({ to: "BLOCKED", via: "block" })
+  ]),
+  DONE: Object.freeze([])
+});
+var ALLOWED_TRANSITIONS = Object.freeze(Object.fromEntries(Object.entries(TRANSITION_TABLE).map(([state, transitions]) => [
+  state,
+  new Map(transitions.map((t) => [`${t.via}:${t.choice || t.mode || ""}`, t.to]))
+])));
 
 class PiStackController {
+  static get ALLOWED_TRANSITIONS() {
+    return ALLOWED_TRANSITIONS;
+  }
   #statePath;
   #state;
   #loaded;
@@ -20066,6 +20141,7 @@ class PiStackController {
       this.#loaded = true;
       return;
     }
+    let primaryError = null;
     try {
       const raw = readFileSync(this.#statePath, "utf8");
       if (raw.length > MAX_STATE_FILE_SIZE)
@@ -20073,8 +20149,9 @@ class PiStackController {
       this.#state = { ...DEFAULT_STATE, ...JSON.parse(raw) };
       this.#loaded = true;
       return;
-    } catch (err2) {
-      log("warn:load_primary_failed", { error: err2.message });
+    } catch (err) {
+      primaryError = err;
+      log("warn:load_primary_failed", { error: err.message });
     }
     const backupPath = this.#statePath + ".backup";
     try {
@@ -20085,18 +20162,22 @@ class PiStackController {
       log("warn:state_restored_from_backup");
       this.#loaded = true;
       return;
-    } catch {
+    } catch (backupErr) {
+      const isMissing = backupErr && backupErr.code === "ENOENT";
+      const detail = backupErr && backupErr.message || primaryError && primaryError.message || "unknown";
       this.#state = {
         ...DEFAULT_STATE,
-        error: `State file corrupt: ${err.message}. No backup available. State reset to default.`
+        ...isMissing ? {} : { error: `State file corrupt: ${detail}. No backup available. State reset to default.` }
       };
-      log("warn:state_reset", { error: err.message });
+      if (!isMissing)
+        log("warn:state_reset", { error: detail });
     }
     this.#loaded = true;
   }
   #persist() {
     if (!this.#statePath)
       return;
+    this.#flushAudit();
     const dir = dirname(this.#statePath);
     mkdirSync(dir, { recursive: true });
     const serialized = safeJsonStringify(this.#state, true);
@@ -20136,6 +20217,48 @@ class PiStackController {
     this.#state.tasks = trimmed;
     log("warn:tasks_trimmed", { before: entries.length, after: MAX_TASKS });
   }
+  #snapshotCodegraph(fullResult) {
+    if (!fullResult || typeof fullResult !== "object")
+      return fullResult;
+    const snapshot = {
+      symbols: (fullResult.symbols || []).map((s) => ({
+        name: s && s.name,
+        kind: s && s.kind,
+        file: s && s.file
+      })),
+      blastRadius: fullResult.blastRadius,
+      fileCount: Array.isArray(fullResult.files) ? fullResult.files.length : 0,
+      callPaths: (fullResult.callPaths || []).map((p) => p.map((s) => s && s.name)),
+      timestamp: Date.now()
+    };
+    if (safeJsonStringify(snapshot).length > MAX_SNAPSHOT_JSON_LENGTH) {
+      delete snapshot.callPaths;
+    }
+    if (safeJsonStringify(snapshot).length > MAX_SNAPSHOT_JSON_LENGTH && Array.isArray(snapshot.symbols)) {
+      snapshot.symbols = snapshot.symbols.slice(0, 200);
+    }
+    return snapshot;
+  }
+  #auditBuffer = [];
+  #audit(phase, decision, reasoning) {
+    this.#auditBuffer.push({
+      timestamp: new Date().toISOString(),
+      phase,
+      decision: decision || null,
+      reasoning: reasoning || null
+    });
+  }
+  #flushAudit() {
+    if (this.#auditBuffer.length === 0)
+      return;
+    if (!this.#state.audit)
+      this.#state.audit = [];
+    this.#state.audit.push(...this.#auditBuffer);
+    this.#auditBuffer = [];
+    if (this.#state.audit.length > 100) {
+      this.#state.audit = this.#state.audit.slice(-100);
+    }
+  }
   #transition(to, changes = {}) {
     this.#state.revision++;
     this.#state.state = to;
@@ -20144,76 +20267,8 @@ class PiStackController {
     this.#persist();
   }
   #isAllowedTransition(from, via, choiceOrMode) {
-    const table = {
-      INTERPRETATION_PENDING: [
-        { to: "CLARIFICATION_PENDING", via: "request_clarification" },
-        { to: "DISCOVERY", via: "proceed_to_discovery" },
-        { to: "ROUTE_DECISION_PENDING", via: "record_discovery" },
-        { to: "BLOCKED", via: "block" }
-      ],
-      CLARIFICATION_PENDING: [
-        { to: "DISCOVERY", via: "record_clarification" },
-        { to: "BLOCKED", via: "block" },
-        { to: "BLOCKED", via: "abandon" }
-      ],
-      DISCOVERY: [
-        { to: "LEVEL_RESOLVED", via: "record_discovery" },
-        { to: "BLOCKED", via: "block" },
-        { to: "BLOCKED", via: "abandon" }
-      ],
-      LEVEL_RESOLVED: [
-        { to: "ROUTE_DECISION_PENDING", via: "route_decision_pending" },
-        { to: "BLOCKED", via: "block" }
-      ],
-      ROUTE_DECISION_PENDING: [
-        { to: "SPECIFICATION", via: "consume_route_decision", choice: "SPEC" },
-        { to: "EXECUTION_ANALYSIS", via: "consume_route_decision", choice: "DIRECT" },
-        { to: "BLOCKED", via: "block" }
-      ],
-      SPECIFICATION: [
-        { to: "EXECUTION_ANALYSIS", via: "spec_complete" },
-        { to: "BLOCKED", via: "block" },
-        { to: "BLOCKED", via: "abandon" }
-      ],
-      EXECUTION_ANALYSIS: [
-        { to: "EXECUTION_DECISION_PENDING", via: "analysis_complete" },
-        { to: "BLOCKED", via: "block" },
-        { to: "BLOCKED", via: "abandon" }
-      ],
-      EXECUTION_DECISION_PENDING: [
-        { to: "EXECUTING_INLINE", via: "consume_execution_decision", mode: "INLINE" },
-        { to: "EXECUTING_SUBAGENTS", via: "consume_execution_decision", mode: "SUBAGENT_DRIVEN" },
-        { to: "BLOCKED", via: "block" }
-      ],
-      EXECUTING_INLINE: [
-        { to: "SYNC", via: "implementation_complete" },
-        { to: "BLOCKED", via: "block" }
-      ],
-      EXECUTING_SUBAGENTS: [
-        { to: "SYNC", via: "implementation_complete" },
-        { to: "BLOCKED", via: "block" }
-      ],
-      BLOCKED: [
-        { to: "INTERPRETATION_PENDING", via: "replan" },
-        { to: "DONE", via: "abandon" }
-      ],
-      SYNC: [
-        { to: "DONE", via: "sync_complete" },
-        { to: "BLOCKED", via: "block" }
-      ],
-      DONE: []
-    };
-    const transitions = table[from] || [];
-    for (const t of transitions) {
-      if (t.via !== via)
-        continue;
-      if (t.choice !== undefined && t.choice !== choiceOrMode)
-        continue;
-      if (t.mode !== undefined && t.mode !== choiceOrMode)
-        continue;
-      return t.to;
-    }
-    return null;
+    const key = `${via}:${choiceOrMode || ""}`;
+    return PiStackController.ALLOWED_TRANSITIONS[from]?.get(key) ?? null;
   }
   async startRequest({ requestId, changeId } = {}) {
     this.#load();
@@ -20257,10 +20312,14 @@ class PiStackController {
       return { error: `Cannot record discovery from state ${this.#state.state}` };
     if (!["0", "0+1", "1+"].includes(level))
       return { error: `Invalid level: ${level}` };
+    this.#audit("discovery", `level:${level}`, `Route decision: ${routeDecisionId || "auto"}`);
     this.#transition(to, {
       routeDecisionId: routeDecisionId || "route-" + Date.now(),
       routeChoice: null,
-      snapshots: { ...this.#state.snapshots, codegraph: snapshot || this.#state.snapshots.codegraph }
+      snapshots: {
+        ...this.#state.snapshots,
+        codegraph: this.#snapshotCodegraph(snapshot || this.#state.snapshots.codegraph)
+      }
     });
     const defaultChoice = level === "1+" ? "SPEC" : "DIRECT";
     return {
@@ -20301,13 +20360,14 @@ class PiStackController {
   }
   async recordExecutionAnalysis({ executionDecisionId, snapshot } = {}) {
     this.#load();
-    const to = this.#isAllowedTransition(this.#state.state, "analysis_complete");
+    const to = this.#isAllowedTransition(this.#state.state, "record_execution_analysis");
     if (!to)
       return { error: `Cannot record execution analysis from state ${this.#state.state}` };
+    this.#audit("execution_analysis", `decision:${executionDecisionId || "auto"}`, snapshot ? "With CodeGraph snapshot" : "No snapshot");
     this.#transition("EXECUTION_DECISION_PENDING", {
       executionDecisionId: executionDecisionId || "exec-" + Date.now(),
       executionMode: null,
-      snapshots: { ...this.#state.snapshots, execution: snapshot || null }
+      snapshots: { ...this.#state.snapshots, execution: this.#snapshotCodegraph(snapshot || null) }
     });
     return {
       state: this.#state.state,
@@ -20356,6 +20416,7 @@ class PiStackController {
     const to = this.#isAllowedTransition(this.#state.state, "block");
     if (!to)
       return { error: `Cannot block from state ${this.#state.state}` };
+    this.#audit("blocked", reason || "Blocked", `From state: ${this.#state.state}`);
     this.#transition(to, { error: reason || "Blocked" });
     return { state: this.#state.state, revision: this.#state.revision };
   }
@@ -20441,6 +20502,13 @@ class PiStackController {
       if (!this.#state.fileFingerprints)
         this.#state.fileFingerprints = {};
       this.#state.fileFingerprints[filePath] = fileHash;
+    } else if (filePath) {
+      const fp = fastFingerprint(filePath);
+      if (fp) {
+        if (!this.#state.fileFingerprints)
+          this.#state.fileFingerprints = {};
+        this.#state.fileFingerprints[filePath] = fp;
+      }
     }
     this.#trimTasks();
     this.#persist();
@@ -20472,8 +20540,15 @@ function safeHandler(fn) {
 }
 var server = new McpServer({
   name: "pistack-controller",
-  version: "0.5.10"
+  version: "0.5.11"
 });
+server.registerTool("ping", {
+  description: "Health check — returns pong if controller is alive.",
+  inputSchema: object({})
+}, safeHandler(async () => {
+  const s = await controller.getState();
+  return { pong: true, state: s.state, revision: s.revision };
+}));
 server.registerTool("start_request", {
   description: "Start or resume a new request in the state machine. Call this first.",
   inputSchema: object({

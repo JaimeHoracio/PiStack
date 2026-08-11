@@ -50,7 +50,7 @@ The next step depends on how the change was routed by PiStack:
 
 | Routing | Next Skill | When |
 |---------|------------|------|
-| **DIRECT** (Level 0/0+1) | `writing-plans` | Small changes, no OpenSpec |
+| **DIRECT** (Level 0/0+1) | Ejecución directa inline | Small changes, no OpenSpec |
 | **SPEC** (Level 1+) | `openspec-propose` | Complex changes requiring OpenSpec artifacts |
 
 If you're unsure about routing, ask PiStack or check the controller state.

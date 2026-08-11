@@ -896,6 +896,17 @@ export async function installPiStack(
     }
 
     const allSuccess = Object.values(details).every((d) => d.success);
+    if (allSuccess) {
+        // Decisión sobre paquetes oficiales de pi.dev (analizado 2026-08-11).
+        // El instalador NO descarga pi-code-graph ni gentle-engram por diseño.
+        console.log("");
+        console.log("ℹ️  Decisión sobre paquetes oficiales en pi.dev (NO instalados):");
+        console.log("   ❌ pi-code-graph   → rechazado (Docker+OpenRouter; Rust local v1.5.0 es más eficiente)");
+        console.log("   ❌ gentle-engram  → rechazado (cloud-first; PiStack es local-first)");
+        console.log("   📋 openspec-pi    → upgrade opcional (auto-context + 3 skills)");
+        console.log("   📋 pi-superpowers → upgrade opcional (8 skills; deshabilitar plan-tracker)");
+        console.log("   Ver README §'Paquetes oficiales en pi.dev' para instrucciones de upgrade.");
+    }
     return {
         success: allSuccess,
         message: allSuccess ? '✅ PiStack instalado correctamente' : '⚠️ PiStack instalado con advertencias',

@@ -13,20 +13,6 @@ import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 // Config desde env vars
 const SERVER_URL = process.env.OPENCODE_SERVER_URL || 'http://127.0.0.1:4096';
 const SERVER_PASSWORD = process.env.OPENCODE_SERVER_PASSWORD; // vacío = sin auth
-const MiMo_V2_5_Free = {
-    id: 'mimo-v2.5-free',
-    name: 'MiMo V2.5 Free',
-    reasoning: true,
-    input: ['text', 'image'],
-    contextWindow: 200000,
-    maxTokens: 32000,
-    cost: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-    },
-};
 
 // Cliente singleton (lazy). `any` a propósito: el tipo de createOpencodeClient
 // solo existe si el SDK está instalado, y acá es opcional.
@@ -251,7 +237,7 @@ export default function (pi: ExtensionAPI) {
         baseUrl: SERVER_URL,
         apiKey: SERVER_PASSWORD || 'opencode',
         api: 'opencode-server',
-        models: [MiMo_V2_5_Free],
+        models: [],
         streamSimple: streamOpenCode,
     });
 }

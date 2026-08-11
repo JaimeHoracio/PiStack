@@ -213,7 +213,7 @@ Ready to implement auth feature
 **Called by:**
 - **thinking** (creative-design mode) - REQUIRED when design is approved and implementation follows
 - **subagent-driven-development** - REQUIRED before executing any tasks
-- **executing-plans** - REQUIRED before executing any tasks
+- **subagent-driven-development** - REQUIRED before executing any tasks
 - Any skill needing isolated workspace
 
 **Pairs with:**
