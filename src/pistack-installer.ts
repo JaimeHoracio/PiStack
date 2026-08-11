@@ -526,7 +526,12 @@ export async function installCodeGraphComponent(toolsDir: string, projectRoot: s
 
             await extractArchive(archivePath, cgToolDir);
             flattenExtractedDir(cgToolDir);
-            renameSync(join(cgToolDir, binName), localBin);
+            // v1.5.0+ empaqueta el binario en bin/<name> (runtime + kernel en lib/).
+            // Solo mover si el binario quedó en la raíz (estructura antigua).
+            const extractedBin = join(cgToolDir, binName);
+            if (existsSync(extractedBin)) {
+                renameSync(extractedBin, localBin);
+            }
             await chmodIfUnix(localBin);
         } catch (e) {
             return { success: false, message: `Error instalando CodeGraph: ${e}` };
@@ -577,7 +582,11 @@ export async function installEngramComponent(toolsDir: string): Promise<Componen
 
             await extractArchive(archivePath, egToolDir);
             flattenExtractedDir(egToolDir);
-            renameSync(join(egToolDir, binName), localBin);
+            // Mismo patrón que CodeGraph: mover solo si el binario quedó en la raíz.
+            const extractedBin = join(egToolDir, binName);
+            if (existsSync(extractedBin)) {
+                renameSync(extractedBin, localBin);
+            }
             await chmodIfUnix(localBin);
         } catch (e) {
             return { success: false, message: `Error instalando Engram: ${e}` };
@@ -820,7 +829,7 @@ export async function installPiStack(
     }
 
     // Migración: PI 0.35+ deprecó .pi/tools/ (custom tools → extensions) y emite
-    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.10.
+    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.11.
     migrateLegacyToolsDir(root);
 
     const piDir = createPiDir(root);
