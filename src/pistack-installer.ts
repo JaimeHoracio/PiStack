@@ -508,14 +508,22 @@ export async function installCodeGraphComponent(toolsDir: string, projectRoot: s
     const cgToolDir = join(toolsDir, 'codegraph');
     const cgBinDir = join(cgToolDir, 'bin');
 
+    // IMPORTANTE: cgToolDir puede no existir si el usuario borró .pi/ y volvió
+    // a instalar (instalación "limpia" tras corrupción). Sin este mkdirSync,
+    // downloadFile() falla con ENOENT al escribir el tarball.
+    mkdirSync(cgToolDir, { recursive: true });
+
     const binName = getBinaryName('codegraph');
     const localBin = join(cgBinDir, binName);
     if (existsSync(localBin)) {
         try {
             await $`${localBin} --version`.quiet();
         } catch {
+            // Binario corrupto/incompatible: limpieza TOTAL del tool dir
+            // (no solo bin/) para descartar tarballs o extracts parciales.
             try {
-                rmSync(cgBinDir, { recursive: true, force: true });
+                rmSync(cgToolDir, { recursive: true, force: true });
+                mkdirSync(cgToolDir, { recursive: true });
             } catch {}
         }
     }
@@ -566,14 +574,22 @@ export async function installEngramComponent(toolsDir: string): Promise<Componen
     const egToolDir = join(toolsDir, 'engram');
     const egBinDir = join(egToolDir, 'bin');
 
+    // IMPORTANTE: egToolDir puede no existir si el usuario borró .pi/ y volvió
+    // a instalar (instalación "limpia" tras corrupción). Sin este mkdirSync,
+    // downloadFile() falla con ENOENT al escribir el tarball.
+    mkdirSync(egToolDir, { recursive: true });
+
     const binName = getBinaryName('engram');
     const localBin = join(egBinDir, binName);
     if (existsSync(localBin)) {
         try {
             await $`${localBin} --version`.quiet();
         } catch {
+            // Binario corrupto/incompatible: limpieza TOTAL del tool dir
+            // (no solo bin/) para descartar tarballs o extracts parciales.
             try {
-                rmSync(egBinDir, { recursive: true, force: true });
+                rmSync(egToolDir, { recursive: true, force: true });
+                mkdirSync(egToolDir, { recursive: true });
             } catch {}
         }
     }
@@ -849,7 +865,7 @@ export async function installPiStack(
     }
 
     // Migración: PI 0.35+ deprecó .pi/tools/ (custom tools → extensions) y emite
-    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.12.
+    // warnings si la carpeta existe. Nuestros binarios viven en .pi/bin/ desde 0.0.13.
     migrateLegacyToolsDir(root);
 
     const piDir = createPiDir(root);
