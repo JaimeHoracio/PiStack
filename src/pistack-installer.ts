@@ -325,17 +325,13 @@ function getEngramAssetName(versionNum: string): string {
 }
 
 /**
- * Descomprime un archivo descargado según la plataforma:
- * - Windows: PowerShell Expand-Archive (zip)
- * - Unix: tar (tar.gz)
+ * Descomprime un archivo descargado usando tar (disponible nativamente en
+ * Windows 10+ y todas las versiones de Unix). tar soporta tanto .tar.gz
+ * como .zip, eliminando la dependencia de PowerShell.
  * El archivo original se elimina después de extraer.
  */
 async function extractArchive(archivePath: string, destDir: string): Promise<void> {
-    if (isWindows()) {
-        await $`powershell -NoProfile -Command Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force`.quiet();
-    } else {
-        await $`tar -xzf ${archivePath} -C ${destDir}`.quiet();
-    }
+    await $`tar -xf ${archivePath} -C ${destDir}`.quiet();
     rmSync(archivePath, { force: true });
 }
 
@@ -380,6 +376,44 @@ async function downloadFile(url: string, dest: string, maxSize: number = 100_000
     const arrayBuffer = await response.arrayBuffer();
     if (arrayBuffer.byteLength > maxSize) throw new Error(`Download too large: ${arrayBuffer.byteLength} bytes`);
     writeFileSync(dest, Buffer.from(arrayBuffer));
+}
+
+/** Descarga con retry y backoff exponencial (1s, 2s, 3s). */
+async function downloadWithRetry(url: string, dest: string, maxSize: number = 100_000_000, maxRetries = 3): Promise<void> {
+    let lastError: Error | undefined;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            await downloadFile(url, dest, maxSize);
+            return;
+        } catch (e) {
+            lastError = e instanceof Error ? e : new Error(String(e));
+            if (attempt < maxRetries) {
+                await new Promise((r) => setTimeout(r, attempt * 1000));
+            }
+        }
+    }
+    throw lastError;
+}
+
+/**
+ * Valida que un binario exista y sea ejecutable.
+ * En Windows, si falla la ejecución directa, intenta con cmd /c como fallback
+ * (resuelve problemas de permisos NTFS y Windows Defender).
+ */
+async function validateBinary(localBin: string): Promise<boolean> {
+    if (!existsSync(localBin)) return false;
+    try {
+        await $`${localBin} --version`.quiet();
+        return true;
+    } catch {
+        if (!isWindows()) return false;
+        try {
+            await $`cmd /c "${localBin}" --version`.quiet();
+            return true;
+        } catch {
+            return false;
+        }
+    }
 }
 
 // ─── Instalación de PI (si no está instalado) ────────────────────────────────
@@ -507,25 +541,17 @@ export async function installPiMcpAdapterComponent(): Promise<ComponentDetail> {
 export async function installCodeGraphComponent(toolsDir: string, projectRoot: string): Promise<ComponentDetail> {
     const cgToolDir = join(toolsDir, 'codegraph');
     const cgBinDir = join(cgToolDir, 'bin');
-
-    // IMPORTANTE: cgToolDir puede no existir si el usuario borró .pi/ y volvió
-    // a instalar (instalación "limpia" tras corrupción). Sin este mkdirSync,
-    // downloadFile() falla con ENOENT al escribir el tarball.
-    mkdirSync(cgToolDir, { recursive: true });
-
     const binName = getBinaryName('codegraph');
     const localBin = join(cgBinDir, binName);
-    if (existsSync(localBin)) {
+
+    // Verificar si el binario actual es válido (Fix 2: validación antes de usar)
+    if (await validateBinary(localBin)) {
+        // Binario OK — continuar directo
+    } else if (existsSync(localBin)) {
+        // Binario corrupto/incompatible: limpieza TOTAL del tool dir
         try {
-            await $`${localBin} --version`.quiet();
-        } catch {
-            // Binario corrupto/incompatible: limpieza TOTAL del tool dir
-            // (no solo bin/) para descartar tarballs o extracts parciales.
-            try {
-                rmSync(cgToolDir, { recursive: true, force: true });
-                mkdirSync(cgToolDir, { recursive: true });
-            } catch {}
-        }
+            rmSync(cgToolDir, { recursive: true, force: true });
+        } catch {}
     }
 
     if (!existsSync(localBin)) {
@@ -536,25 +562,49 @@ export async function installCodeGraphComponent(toolsDir: string, projectRoot: s
 
             const assetName = getCodeGraphAssetName();
             const url = `https://github.com/colbymchenry/codegraph/releases/download/${tag}/${assetName}`;
-            const archivePath = join(cgToolDir, assetName);
 
-            await downloadFile(url, archivePath, 200_000_000);
+            // Fix 5: staging atómico — extraer a directorio temporal, validar, promover
+            const stagingDir = `${cgToolDir}.staging`;
+            try {
+                rmSync(stagingDir, { recursive: true, force: true });
+            } catch {}
+            mkdirSync(stagingDir, { recursive: true });
 
-            await extractArchive(archivePath, cgToolDir);
-            flattenExtractedDir(cgToolDir);
+            try {
+                const archivePath = join(stagingDir, assetName);
+                // Fix 4: retry con backoff para descargas
+                await downloadWithRetry(url, archivePath, 200_000_000);
+                await extractArchive(archivePath, stagingDir);
+                flattenExtractedDir(stagingDir);
 
-            // Buscar el binario en las ubicaciones posibles tras flatten:
-            // 1. En bin/<name> (v1.5.0+, estructura estándar del archive)
-            // 2. En la raíz (archives viejos o flatten directo)
-            if (!existsSync(cgBinDir)) mkdirSync(cgBinDir, { recursive: true });
-            const binInBinDir = join(cgBinDir, binName);
-            const binInRoot = join(cgToolDir, binName);
-            if (existsSync(binInBinDir)) {
-                // Ya está en bin/ — nada que mover
-            } else if (existsSync(binInRoot)) {
-                renameSync(binInRoot, binInBinDir);
+                // Buscar el binario en las ubicaciones posibles tras flatten
+                const stagingBinDir = join(stagingDir, 'bin');
+                if (!existsSync(stagingBinDir)) mkdirSync(stagingBinDir, { recursive: true });
+                const binInStagingBin = join(stagingBinDir, binName);
+                const binInStagingRoot = join(stagingDir, binName);
+                if (existsSync(binInStagingBin)) {
+                    // OK — ya está en bin/
+                } else if (existsSync(binInStagingRoot)) {
+                    renameSync(binInStagingRoot, binInStagingBin);
+                }
+
+                // Fix 2: validar binario antes de promover
+                if (!(await validateBinary(binInStagingBin))) {
+                    throw new Error(
+                        `Binario CodeGraph no ejecutable. En Windows: verificar Visual C++ Redistributable.`
+                    );
+                }
+
+                // Promover atómicamente: limpiar dir viejo → renombrar staging
+                if (existsSync(cgToolDir)) rmSync(cgToolDir, { recursive: true, force: true });
+                renameSync(stagingDir, cgToolDir);
+            } catch (e) {
+                // Limpiar staging en caso de fallo
+                try {
+                    rmSync(stagingDir, { recursive: true, force: true });
+                } catch {}
+                return { success: false, message: `Error instalando CodeGraph: ${e}` };
             }
-            await chmodIfUnix(binInBinDir);
         } catch (e) {
             return { success: false, message: `Error instalando CodeGraph: ${e}` };
         }
@@ -573,25 +623,17 @@ export async function installCodeGraphComponent(toolsDir: string, projectRoot: s
 export async function installEngramComponent(toolsDir: string): Promise<ComponentDetail> {
     const egToolDir = join(toolsDir, 'engram');
     const egBinDir = join(egToolDir, 'bin');
-
-    // IMPORTANTE: egToolDir puede no existir si el usuario borró .pi/ y volvió
-    // a instalar (instalación "limpia" tras corrupción). Sin este mkdirSync,
-    // downloadFile() falla con ENOENT al escribir el tarball.
-    mkdirSync(egToolDir, { recursive: true });
-
     const binName = getBinaryName('engram');
     const localBin = join(egBinDir, binName);
-    if (existsSync(localBin)) {
+
+    // Verificar si el binario actual es válido (Fix 2: validación antes de usar)
+    if (await validateBinary(localBin)) {
+        // Binario OK — continuar directo
+    } else if (existsSync(localBin)) {
+        // Binario corrupto/incompatible: limpieza TOTAL del tool dir
         try {
-            await $`${localBin} --version`.quiet();
-        } catch {
-            // Binario corrupto/incompatible: limpieza TOTAL del tool dir
-            // (no solo bin/) para descartar tarballs o extracts parciales.
-            try {
-                rmSync(egToolDir, { recursive: true, force: true });
-                mkdirSync(egToolDir, { recursive: true });
-            } catch {}
-        }
+            rmSync(egToolDir, { recursive: true, force: true });
+        } catch {}
     }
 
     if (!existsSync(localBin)) {
@@ -605,25 +647,49 @@ export async function installEngramComponent(toolsDir: string): Promise<Componen
 
             const assetName = getEngramAssetName(versionNum);
             const url = `https://github.com/Gentleman-Programming/engram/releases/download/${tag}/${assetName}`;
-            const archivePath = join(egToolDir, assetName);
 
-            await downloadFile(url, archivePath, 50_000_000);
+            // Fix 5: staging atómico — extraer a directorio temporal, validar, promover
+            const stagingDir = `${egToolDir}.staging`;
+            try {
+                rmSync(stagingDir, { recursive: true, force: true });
+            } catch {}
+            mkdirSync(stagingDir, { recursive: true });
 
-            await extractArchive(archivePath, egToolDir);
-            flattenExtractedDir(egToolDir);
+            try {
+                const archivePath = join(stagingDir, assetName);
+                // Fix 4: retry con backoff para descargas
+                await downloadWithRetry(url, archivePath, 50_000_000);
+                await extractArchive(archivePath, stagingDir);
+                flattenExtractedDir(stagingDir);
 
-            // Buscar el binario en las ubicaciones posibles tras flatten:
-            // 1. En bin/<name> (estructura estándar del archive)
-            // 2. En la raíz (flatten directo)
-            if (!existsSync(egBinDir)) mkdirSync(egBinDir, { recursive: true });
-            const binInBinDir = join(egBinDir, binName);
-            const binInRoot = join(egToolDir, binName);
-            if (existsSync(binInBinDir)) {
-                // Ya está en bin/ — nada que mover
-            } else if (existsSync(binInRoot)) {
-                renameSync(binInRoot, binInBinDir);
+                // Buscar el binario en las ubicaciones posibles tras flatten
+                const stagingBinDir = join(stagingDir, 'bin');
+                if (!existsSync(stagingBinDir)) mkdirSync(stagingBinDir, { recursive: true });
+                const binInStagingBin = join(stagingBinDir, binName);
+                const binInStagingRoot = join(stagingDir, binName);
+                if (existsSync(binInStagingBin)) {
+                    // OK — ya está en bin/
+                } else if (existsSync(binInStagingRoot)) {
+                    renameSync(binInStagingRoot, binInStagingBin);
+                }
+
+                // Fix 2: validar binario antes de promover
+                if (!(await validateBinary(binInStagingBin))) {
+                    throw new Error(
+                        `Binario Engram no ejecutable. En Windows: verificar Visual C++ Redistributable.`
+                    );
+                }
+
+                // Promover atómicamente: limpiar dir viejo → renombrar staging
+                if (existsSync(egToolDir)) rmSync(egToolDir, { recursive: true, force: true });
+                renameSync(stagingDir, egToolDir);
+            } catch (e) {
+                // Limpiar staging en caso de fallo
+                try {
+                    rmSync(stagingDir, { recursive: true, force: true });
+                } catch {}
+                return { success: false, message: `Error instalando Engram: ${e}` };
             }
-            await chmodIfUnix(binInBinDir);
         } catch (e) {
             return { success: false, message: `Error instalando Engram: ${e}` };
         }

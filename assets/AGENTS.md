@@ -117,6 +117,12 @@ PiStack **NO instala** los 4 paquetes oficiales de `pi.dev/packages` por defecto
 
 **Antes de la primera llamada a cualquier tool MCP en cada request**, verificá disponibilidad una sola vez y cacheá el resultado para todo el request:
 
+**S3 (recomendado):** Si la tool `health_check` del controller está disponible, usala como **primer check único**: `health_check` verifica Controller + CodeGraph + Engram en UNA llamada (ahorra 2 roundtrips).
+   - ✅ Responde → usá su resultado (`controller`, `codegraph`, `engram`) para decidir disponibilidad.
+   - ❌ Timeout ~3s o `tool not found` → hacé los 3 checks individuales de abajo (fallback).
+
+Si `health_check` no está disponible, hacé los checks individuales:
+
 1. **Controller:** Llamá `ping` (con `toolPrefix: 'none'`, el nombre es `ping`, no `pistack-controller_ping`).
    - ✅ `{ pong: true }` → controller disponible → **usar workflow completo**.
    - ❌ Si `ping` no existe o falla → intentá `get_state` como fallback (si devuelve estado, el controller está vivo).

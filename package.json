@@ -1,6 +1,6 @@
 {
     "name": "pistack",
-    "version": "0.0.14",
+    "version": "0.0.15",
     "description": "PiStack - Agent Harness para PI (Orquestador con machine states, 3 niveles, MCP, skills curadas)",
     "type": "module",
     "main": "dist/cli.js",

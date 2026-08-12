@@ -41,6 +41,20 @@ async function getClient(): Promise<any> {
     return opencodeClient;
 }
 
+/** Convierte cualquier error de conexión en un stream de error legible.
+ *  Antes, `session.create`/`session.prompt` lanzaban "fetch failed" (ECONNREFUSED
+ *  de undici) que subía crudo a la TUI ×3 (1 por retry del provider). */
+function makeConnectionErrorStream(error: unknown): AssistantMessageEventStream {
+    const detail = error instanceof Error ? error.message : String(error);
+    return makeErrorStream(
+        'Error: no se pudo conectar con el OpenCode Server.\n' +
+            `Detalle: ${detail}\n\n` +
+            'Probablemente el server no está corriendo. Para levantarlo:\n' +
+            '  bunx opencode serve --port 4096   (o: npx opencode serve --port 4096)\n' +
+            'Si usás otro host/puerto, configuralo con OPENCODE_SERVER_URL.'
+    );
+}
+
 /** Emite un stream de error bien formado (Pi espera start → text_* → done). */
 function makeErrorStream(message: string): AssistantMessageEventStream {
     const stream = createAssistantMessageEventStream();
@@ -118,21 +132,31 @@ async function streamOpenCode(
 
     // Create session
     // console.log('[opencode-server] Creating session...');
-    const sessionResult = await client.session.create({});
+    let sessionResult: any;
+    try {
+        sessionResult = await client.session.create({});
+    } catch (error) {
+        return makeConnectionErrorStream(error);
+    }
     const sessionId = sessionResult.data.id;
     // console.log('[opencode-server] Session created:', sessionId);
 
     // Send message using OpenCode SDK
     // console.log('[opencode-server] Sending message to OpenCode (model: mimo-v2.5-free)...');
-    const response = await client.session.prompt({
-        path: { id: sessionId },
-        body: {
-            parts: [{ type: 'text', text: prompt }],
-            system: systemPrompt,
-            model: { providerID: 'opencode', modelID: model.id },
-            tools: {},
-        },
-    });
+    let response: any;
+    try {
+        response = await client.session.prompt({
+            path: { id: sessionId },
+            body: {
+                parts: [{ type: 'text', text: prompt }],
+                system: systemPrompt,
+                model: { providerID: 'opencode', modelID: model.id },
+                tools: {},
+            },
+        });
+    } catch (error) {
+        return makeConnectionErrorStream(error);
+    }
 
     /*
     console.log('[opencode-server] OpenCode response received', {

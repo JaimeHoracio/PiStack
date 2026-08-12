@@ -8,9 +8,12 @@ dist/
 # Installed instance (example)
 .pi/
 
+# Controller runtime state (created by pistack-controller)
+state.json
+state.json.backup
+pistack-state.json
+pistack-state.json.backup
+
 # Dependencies
 node_modules/
 
-# Tools
-.codegraph
-openspec

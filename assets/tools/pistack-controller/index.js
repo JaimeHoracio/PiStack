@@ -19974,7 +19974,7 @@ var StdioServerTransport = class {
 };
 
 // assets/tools/pistack-controller/src/index.js
-import { readFileSync, writeFileSync, renameSync, mkdirSync, readdirSync, unlinkSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, mkdirSync, readdirSync, unlinkSync, statSync, existsSync } from "node:fs";
 import { dirname, basename } from "node:path";
 var MAX_TASKS = 100;
 var MAX_SNAPSHOT_JSON_LENGTH = 50 * 1024;
@@ -20548,6 +20548,33 @@ server.registerTool("ping", {
 }, safeHandler(async () => {
   const s = await controller.getState();
   return { pong: true, state: s.state, revision: s.revision };
+}));
+server.registerTool("health_check", {
+  description: "S3 — Verify Controller + CodeGraph + Engram availability in ONE call. " + "Replaces 3 separate pre-flight calls (ping + codegraph_status + mem_context). " + "controller: true si este tool responde (controller vivo). " + "codegraph: binario local + indice .codegraph/ presentes. " + "engram: binario local presente.",
+  inputSchema: object({})
+}, safeHandler(async () => {
+  const s = await controller.getState();
+  const binSuffix = process.platform === "win32" ? ".exe" : "";
+  const toolsBin = ".pi/bin";
+  const has = (p) => {
+    try {
+      return existsSync(p);
+    } catch {
+      return false;
+    }
+  };
+  const codegraphBinary = has(`${toolsBin}/codegraph/bin/codegraph${binSuffix}`);
+  const engramBinary = has(`${toolsBin}/engram/bin/engram${binSuffix}`);
+  const codegraphIndex = has(".codegraph");
+  return {
+    controller: true,
+    state: s.state,
+    revision: s.revision,
+    codegraph: codegraphBinary && codegraphIndex,
+    codegraphBinary,
+    codegraphIndex,
+    engram: engramBinary
+  };
 }));
 server.registerTool("start_request", {
   description: "Start or resume a new request in the state machine. Call this first.",
