@@ -394,6 +394,82 @@ Si el controller está disponible: `consume_route_decision` con `{ decisionId, c
 - Controller no disponible → reportá confianza reducida, default a inline, no ejecutes subagentes sin autorización.
 - Browser/URL: solo si el usuario lo pide explícitamente.
 
+### Controller fallback — Workaround HTTP
+
+El Controller normalmente está disponible via MCP tools (`start_request`, `validate_edit`, etc.). Si esos tools no aparecen disponibles (verificar con `mcp_script` o `get_commands`), el controller puede no haberse levantado correctamente.
+
+**Diagnóstico rápido (ejecutar antes de reportar error):**
+
+```bash
+# 1. ¿Está corriendo el HTTP server?
+curl -sf http://localhost:4694/api/health
+
+# 2. ¿Qué endpoints están disponibles?
+curl -sf http://localhost:4694/api/endpoints | head -50
+
+# 3. ¿Qué dice el state local?
+cat .pi/pistack-state.json | head -30
+```
+
+**NOTIFICACIÓN OBLIGATORIA al usuario antes de operar en modo fallback:**
+
+El agente DEBE notificar al usuario CADA VEZ que detecta que el MCP controller no responde. Usá el formato estandarizado:
+
+**Si el HTTP server responde (200 OK en /api/health) — HTTP fallback activo:**
+
+```
+⚠️ [timestamp] Controller MCP no disponible. Usando fallback HTTP (localhost:4694).
+   Las tools del controller se llamarán via curl. Funcionalidad completa.
+```
+
+**Si el HTTP server NO responde — Modo degraded:**
+
+```
+🔴 [timestamp] Controller MCP y HTTP server no disponibles. Modo degraded activo.
+   - State local: .pi/pistack-state.json (leído directo)
+   - Validación: inline (sin garantías de atomicidad)
+   - Tasks: trackeo en memoria, persist al final via mem_save
+   Algunas garantías están reducidas. Continuá con cuidado.
+```
+
+**Cómo emitir las notificaciones:**
+
+- En la TUI de Pi: usá `ctx.ui.notify()` desde una extension, o emití un mensaje visible en el chat con el icono (⚠️/🔴)
+- En CLI/JSON output: incluí la línea en el primer mensaje al usuario después del diagnóstico
+- En logs: siempre logueá con formato `[timestamp] [fase] [mensaje]` (ver sección Logging)
+
+**Si el HTTP server responde (200 OK en /api/health):**
+
+Llamá tools vía HTTP como fallback. Ejemplo para `record_discovery`:
+
+```bash
+curl -sf -X POST http://localhost:4694/api/tools/record_discovery \
+  -H "Content-Type: application/json" \
+  -d '{"level":"0+1","routeDecisionId":"req-001"}'
+```
+
+El HTTP server acepta los mismos payloads que las MCP tools. La respuesta es JSON con `{state, revision, ...}`.
+
+**Si el HTTP server NO responde:**
+
+1. **No es fatal.** El state está persistido en `.pi/pistack-state.json` — leelo directamente con `Read`.
+2. **Operá en modo degraded:**
+   - `validate_edit` → validación inline (`oldString !== newString`, aparece exactamente una vez)
+   - `complete_task` → trackear tasks en memoria del request, persistir al final en `mem_save`
+   - `start_request`, `consume_route_decision` → skip, documentar en audit trail manual
+3. **Re-notificá al final del request** cuando salgas del modo degraded (volvió el MCP, terminó la sesión, etc.).
+
+**Cuándo re-intentar levantar el controller:**
+
+```bash
+# Si tenés permiso y el archivo del controller existe:
+node .pi/bin/pistack-controller/index.js &
+# Esperá 2s y verificá:
+curl -sf http://localhost:4694/api/health
+```
+
+**NO hacerlo automáticamente** — es destructivo si hay otro proceso. Pedí confirmación.
+
 ### Eficiencia de tokens
 - **CodeGraph primero, siempre.** Timeout ~10s → fallback.
 - **No leas archivos sin justificación.** Solo leé con `Read` lo que CodeGraph o el change activo justifiquen.
