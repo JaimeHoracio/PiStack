@@ -8,7 +8,7 @@
             "file": "assets/AGENTS.md",
             "description": "Orquestador PiStack para PI - 3 niveles, controller MCP, skills curadas, seguridad, robustez",
             "version": "0.0.14",
-            "sha256": "945eebe7cbf7dd646c7d967df7135fe1d04523fd7d178733fbac06c45eca67cb"
+            "sha256": "331035a082c0ff9f14c30a646096f96ce704dd14ce117ebe702003ace837b505"
         },
         {
             "name": "append-system",
@@ -40,7 +40,7 @@
             "file": "assets/skills/using-git-worktrees/SKILL.md",
             "description": "Skill: using-git-worktrees",
             "version": "0.0.14",
-            "sha256": "dfb10c20e19e9c43f3f2494fdc01b713e72b1a1d6f9027b8b2e50e21d79df977"
+            "sha256": "3f168fe40873a21a74157b8d5fb2f8e346d3c8a4eef1ba01eec916dc2a635bb8"
         },
         {
             "name": "writing-skills",
@@ -75,7 +75,7 @@
             "file": "assets/skills/subagent-driven-development/SKILL.md",
             "description": "Skill: subagent-driven-development",
             "version": "0.0.14",
-            "sha256": "058e5965b7af114876eacd77b6f75003fd298a0dfc7f72ebc105cee454b7db2c"
+            "sha256": "fa6feb97ec4021ae06b54ea4a32c7c5b2ce869795b762d90b8751a908c1dc9cc"
         },
         {
             "name": "openspec-propose",
@@ -124,7 +124,7 @@
             "file": "assets/skills/thinking/SKILL.md",
             "description": "Skill: thinking",
             "version": "0.0.14",
-            "sha256": "caaab20e938c9053a4eea96844969fa91fc028daa6c8edcf5eed1642f8e29d88"
+            "sha256": "3018e6cf4b058cd531af86cb6723ce0fa4acdd57a83bca0024182e013dd0d883"
         },
         {
             "name": "tdd",
