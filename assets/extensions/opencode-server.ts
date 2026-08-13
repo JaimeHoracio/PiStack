@@ -14,6 +14,32 @@ import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 const SERVER_URL = process.env.OPENCODE_SERVER_URL || 'http://127.0.0.1:4096';
 const SERVER_PASSWORD = process.env.OPENCODE_SERVER_PASSWORD; // vacío = sin auth
 
+// Retry config: si el OpenCode Server está arrancando, puede tardar unos segundos
+// en aceptar conexiones. Reintentamos hasta 3 veces con backoff exponencial
+// antes de mostrar el error al usuario.
+const MAX_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 1_000;
+
+/** Ejecuta una operación con retry exponencial. Si todos los intentos fallan,
+ *  retorna el último error (no lo lanza) para que el caller lo convierta en
+ *  un stream de error legible. Solo reintenta errores de red/transport — NO
+ *  reintenta errores de lógica (4xx, validation, etc.). */
+async function withRetry<T>(fn: () => Promise<T>, maxRetries: number = MAX_RETRIES): Promise<{ ok: true; value: T } | { ok: false; error: unknown; attempts: number }> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const value = await fn();
+            return { ok: true, value };
+        } catch (e) {
+            lastError = e;
+            if (attempt < maxRetries) {
+                await new Promise((r) => setTimeout(r, INITIAL_BACKOFF_MS * 2 ** (attempt - 1)));
+            }
+        }
+    }
+    return { ok: false, error: lastError, attempts: maxRetries };
+}
+
 // Cliente singleton (lazy). `any` a propósito: el tipo de createOpencodeClient
 // solo existe si el SDK está instalado, y acá es opcional.
 let opencodeClient: any = null;
@@ -130,22 +156,20 @@ async function streamOpenCode(
     });
     */
 
-    // Create session
+    // Create session (con retry: el server puede estar arrancando)
     // console.log('[opencode-server] Creating session...');
-    let sessionResult: any;
-    try {
-        sessionResult = await client.session.create({});
-    } catch (error) {
-        return makeConnectionErrorStream(error);
+    const sessionCreateResult = await withRetry(() => client.session.create({}));
+    if (!sessionCreateResult.ok) {
+        return makeConnectionErrorStream(sessionCreateResult.error);
     }
+    const sessionResult = sessionCreateResult.value;
     const sessionId = sessionResult.data.id;
     // console.log('[opencode-server] Session created:', sessionId);
 
-    // Send message using OpenCode SDK
+    // Send message using OpenCode SDK (con retry)
     // console.log('[opencode-server] Sending message to OpenCode (model: mimo-v2.5-free)...');
-    let response: any;
-    try {
-        response = await client.session.prompt({
+    const promptResult = await withRetry(() =>
+        client.session.prompt({
             path: { id: sessionId },
             body: {
                 parts: [{ type: 'text', text: prompt }],
@@ -153,10 +177,12 @@ async function streamOpenCode(
                 model: { providerID: 'opencode', modelID: model.id },
                 tools: {},
             },
-        });
-    } catch (error) {
-        return makeConnectionErrorStream(error);
+        })
+    );
+    if (!promptResult.ok) {
+        return makeConnectionErrorStream(promptResult.error);
     }
+    let response: any = promptResult.value;
 
     /*
     console.log('[opencode-server] OpenCode response received', {

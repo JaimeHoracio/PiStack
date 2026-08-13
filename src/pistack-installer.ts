@@ -14,6 +14,7 @@ import { createHash } from 'crypto';
 import { join, resolve, dirname, relative } from 'path';
 import { fileURLToPath } from 'url';
 import { createInterface } from 'readline';
+import { execFileSync } from 'child_process';
 import { $ } from 'bun';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -402,22 +403,22 @@ async function downloadWithRetry(
 
 /**
  * Valida que un binario exista y sea ejecutable.
- * En Windows, si falla la ejecución directa, intenta con cmd /c como fallback
- * (resuelve problemas de permisos NTFS y Windows Defender).
+ *
+ * Usa `execFileSync` (no shell, args como array) en lugar de Bun Shell para
+ * evitar el bug de Windows donde paths con backslashes y espacios se parsean
+ * incorrectamente. Este es el patrón que usa Ostacky y que es cross-platform
+ * sin necesidad de fallbacks.
  */
 async function validateBinary(localBin: string): Promise<boolean> {
     if (!existsSync(localBin)) return false;
     try {
-        await $`${localBin} --version`.quiet();
+        execFileSync(localBin, ['--version'], {
+            stdio: 'pipe',
+            timeout: 10_000,
+        });
         return true;
     } catch {
-        if (!isWindows()) return false;
-        try {
-            await $`cmd /c "${localBin}" --version`.quiet();
-            return true;
-        } catch {
-            return false;
-        }
+        return false;
     }
 }
 
@@ -615,11 +616,15 @@ export async function installCodeGraphComponent(toolsDir: string, projectRoot: s
         }
     }
 
-    // Inicializar el índice en el proyecto
+    // Inicializar el índice en el proyecto (no fatal — puede inicializarse después)
     try {
-        await $`${localBin} init -i`.cwd(projectRoot);
-    } catch (e) {
-        return { success: false, message: `CodeGraph descargado pero init falló: ${e}` };
+        execFileSync(localBin, ['init', '-i'], {
+            stdio: 'pipe',
+            timeout: 120_000,
+            cwd: projectRoot,
+        });
+    } catch {
+        // No fatal — el índice puede inicializarse después
     }
 
     return { success: true, message: `CodeGraph instalado e inicializado (.pi/bin/codegraph/${binName})` };

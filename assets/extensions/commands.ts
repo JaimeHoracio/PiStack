@@ -121,13 +121,6 @@ export default function (pi: ExtensionAPI) {
 
       ctx.ui.notify("🎉 PiStack instalado correctamente!", "info");
       ctx.ui.notify("Para usar: ejecuta 'pi' en tu proyecto", "info");
-      ctx.ui.notify("", "info");
-      ctx.ui.notify("📚 Paquetes oficiales en pi.dev (NO instalados):", "info");
-      ctx.ui.notify("   ❌ pi-code-graph  → rechazado (Docker+OpenRouter; Rust local es mejor)", "info");
-      ctx.ui.notify("   ❌ gentle-engram → rechazado (cloud-first; PiStack es local-first)", "info");
-      ctx.ui.notify("   📋 openspec-pi   → upgrade opcional: npm i -g @fission-ai/openspec && pi install npm:openspec-pi", "info");
-      ctx.ui.notify("   📋 pi-superpowers → upgrade opcional: pi install npm:pi-superpowers (deshabilitar plan-tracker)", "info");
-      ctx.ui.notify("   Ver README §'Paquetes oficiales en pi.dev' para detalles", "info");
     },
   });
 
