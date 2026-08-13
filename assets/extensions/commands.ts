@@ -158,4 +158,60 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify("✅ Sincronización completa", "info");
     },
   });
+
+  // friendly-error command: decodifica errores HTTP crudos de proveedores
+  pi.registerCommand("friendly-error", {
+    description: "Decodifica un error HTTP crudo de proveedor (ej: '429 status code (no body)') y devuelve causa + acción sugerida",
+    handler: async (args, ctx) => {
+      const raw = (args ?? "").trim();
+      if (!raw) {
+        ctx.ui.notify("Uso: /friendly-error <error>", "warning");
+        ctx.ui.notify("Ejemplo: /friendly-error 429 status code (no body)", "info");
+        return;
+      }
+
+      const lower = raw.toLowerCase();
+      let friendly: string;
+      let action: string;
+
+      if (lower.includes("429")) {
+        friendly = "El proveedor limitó la cantidad de requests (429). Esperá unos segundos o bajá el tamaño del mensaje antes de reintentar.";
+        action = "Esperar 15-30s y reintentar. Si persiste: revisar tier del proveedor o cambiar de modelo.";
+      } else if (lower.includes("401")) {
+        friendly = "La API key del proveedor fue rechazada (401). Verificá que la variable de entorno correspondiente esté bien definida.";
+        action = "Pedirle al usuario que revise ${PROVIDER_API_KEY} sin mostrarla.";
+      } else if (lower.includes("403")) {
+        friendly = "La API key no tiene permiso para ese modelo (403). Posiblemente el modelo no está disponible en tu tier.";
+        action = "Sugerir un modelo alternativo del mismo proveedor.";
+      } else if (lower.includes("500") || lower.includes("502") || lower.includes("503")) {
+        friendly = "El proveedor tuvo un error interno. Es transitorio — esperá unos segundos y reintentá.";
+        action = "Retry con backoff exponencial. Tras 3 fallos: sugerir cambiar de proveedor.";
+      } else if (lower.includes("fetch failed") && (lower.includes("econnrefused") || lower.includes("127.0.0.1"))) {
+        friendly = "El proveedor local no está corriendo. Iniciá el servidor (ej: 'ollama serve', 'opencode serve --port <p>') y reintentá.";
+        action = "Dar el comando exacto del servidor local que se sospecha caído.";
+      } else if (lower.includes("fetch failed") && lower.includes("enotfound")) {
+        friendly = "No se pudo resolver el host del proveedor. Revisá tu conexión a internet o la URL configurada.";
+        action = "Pedir al usuario verificar la variable BASE_URL.";
+      } else if (lower.includes("fetch failed") || lower.includes("etimedout")) {
+        friendly = "La request al proveedor tardó demasiado y se cortó. Probablemente el modelo está sobrecargado o tu conexión es lenta.";
+        action = "Reintentar una vez. Si persiste: modelo más chico o prompt más corto.";
+      } else if (lower.includes("socket hang up")) {
+        friendly = "La conexión con el proveedor se cortó mientras llegaba la respuesta.";
+        action = "Reintentar — usualmente transitorio.";
+      } else if (lower.includes("context_length_exceeded")) {
+        friendly = "El mensaje es demasiado largo para este modelo. Acortá el contexto o cambiá a un modelo con ventana mayor.";
+        action = "Sugerir /compact o un modelo con más contexto.";
+      } else if (lower.includes("model_not_found")) {
+        friendly = "El modelo solicitado no existe o fue dado de baja. Verificá el nombre en /model.";
+        action = "Listar modelos disponibles de models.json y dejar elegir.";
+      } else {
+        friendly = "Error no reconocido. Mostrá el stack trace completo y revisá logs del proveedor.";
+        action = "Si el error se repite, abrir un issue con el stack completo.";
+      }
+
+      ctx.ui.notify(`❌ ${raw}`, "error");
+      ctx.ui.notify(`💡 ${friendly}`, "info");
+      ctx.ui.notify(`🔧 ${action}`, "info");
+    },
+  });
 }

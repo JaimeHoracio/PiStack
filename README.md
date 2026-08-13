@@ -147,39 +147,48 @@ OLLAMA_CLOUD_MODEL=llama3.1
 
 > **Nota:** Si usás Ollama en Docker, la URL debe ser `http://host.docker.internal:11434/v1` (no localhost).
 
-## Paquetes oficiales en pi.dev (evaluados 2026-08-11)
+## Cómo trabajan las MCP en PiStack
 
-PiStack **NO instala** los 4 paquetes oficiales de [pi.dev/packages](https://pi.dev/packages) por defecto. Cada uno fue evaluado individualmente; los componentes locales de PiStack son **superiores** para su caso de uso.
+PiStack se apoya en tres servidores MCP. Cada uno cumple un rol distinto y todos se ejecutan en local — sin servicios externos.
 
-| Paquete oficial | Versión | Decisión | Por qué |
-|---|---|---|---|
-| [`pi-code-graph`](https://pi.dev/packages/pi-code-graph) | v0.16.0 | ❌ **No instalado** | Producto distinto (Memgraph+Bolt+Tree-sitter+Cypher+zvec). Requiere Docker+OpenRouter. El binario Rust local v1.5.0 (`colbymchenry/codegraph`) es más eficiente, sin infra, sin API key, latencia <50ms. |
-| [`gentle-engram`](https://pi.dev/packages/gentle-engram) | v0.1.10 | ❌ **No instalado** | Es cloud-first (Engram Cloud + TUI + multi-agent sharing). PiStack es **local-first** por diseño — el binario Go local v1.20.0 (`Gentleman-Programming/engram`) cumple sin enviar datos a la nube. |
-| [`openspec-pi`](https://pi.dev/packages/openspec-pi) | v0.1.0 | 📋 **Upgrade opcional** | Agrega **auto-context injection** (extension TS en `before_agent_start`) + 3 skills extra (`openspec-explore`, `openspec-update`, `openspec-sync`) + comando `/ospec`. Las 3 skills locales (`openspec-propose/apply/archive`) siguen funcionando — **sinergia, no conflicto**. |
-| [`pi-superpowers`](https://pi.dev/packages/pi-superpowers) | v0.2.0 | 📋 **Upgrade opcional** | Agrega 8 skills extra (`brainstorming`, `writing-plans`, `subagent-driven-development`, TDD oficial, etc.) + comando `plan_tracker`. **Cuidado**: su extension `plan_tracker` duplica el controller MCP — si se instala, deshabilitar con `disabledExtensions: ["plan-tracker"]` en `.pi/settings.json`. |
+### Controller (`pistack-controller`)
 
-### Upgrade paths (opt-in)
+Es la **fuente única de verdad** para el estado del agente. PiStack no mantiene su propia máquina de estados — usa esta MCP.
 
-Si querés habilitar los paquetes opcionales:
+- Persiste el estado en disco (`pistack-controller.state.json`), así sobrevive entre sesiones y a compactaciones de contexto.
+- Valida cada transición antes de que ocurra (`validate_edit`).
+- Marca tareas como completadas (`complete_task`) con fingerprint SHA-256 del archivo modificado.
+- Estados: `INTERPRETATION_PENDING` → `DISCOVERY` → `ROUTE_DECISION_PENDING` → `EXECUTION` → `SYNC` → `DONE` (con `BLOCKED` y `CLARIFICATION_PENDING` como escapes).
 
-\`\`\`bash
-# openspec-pi: auto-context + 3 skills extra (requiere CLI global)
-npm install -g @fission-ai/openspec
-pi install npm:openspec-pi
+Si el controller no responde (>5s), PiStack entra en **modo degradado**: validación inline, sin tracking de tasks. No aborta — sigue trabajando, pero pierde las garantías de no-overlap.
 
-# pi-superpowers: 8 skills extra (recomendado deshabilitar plan_tracker)
-pi install npm:pi-superpowers
-# Editar .pi/settings.json: "disabledExtensions": ["plan-tracker"]
-\`\`\`
+### CodeGraph (`codegraph`)
 
-⚠️ **No instales** `pi install npm:pi-code-graph` ni `pi install npm:gentle-engram` — duplican funcionalidad sin beneficio y rompen la consistencia local-first de PiStack.
+Es el **explorador de código**. Antes de tocar cualquier archivo, el agente debe preguntar a CodeGraph cómo está estructurado el área afectada.
 
-### ¿Por qué esta decisión?
+- Binario Rust local (sin Docker, sin API keys).
+- Indexa una vez por proyecto (`.codegraph/`) — luego responde en <50ms.
+- Una llamada `codegraph_explore` reemplaza ciclos `grep + read + grep` y devuelve el código fuente verbatim agrupado por archivo.
 
-- ✅ **Sinergia**: las 5 skills Superpowers locales (`systematic-debugging`, `requesting-code-review`, `finishing-a-development-branch`, `executing-plans`, `verification-before-completion`) son **ortogonales** con las 3 skills OpenSpec — usás OpenSpec para gestionar specs, Superpowers para ejecutar tasks.
-- ✅ **Controller intacto**: el controller MCP de PiStack persiste estado en disco (`pistack-controller.state.json`). El `plan_tracker` de `pi-superpowers` es state en sesión — tener ambos genera **doble fuente de verdad** confusa para el LLM.
-- ✅ **Local-first**: el binario Go de Engram funciona 100% offline. `gentle-engram` oficial requiere servidor HTTP Engram corriendo.
-- ✅ **Más eficiente**: el binario Rust de CodeGraph parsea en local, sin LLM-generated Cypher. Para flujos PiStack (3 niveles + controller) la latencia consistente es preferible a la flexibilidad Cypher.
+**Regla de uso**: si vas a editar, primero `codegraph_explore`. Si vas solo a leer un archivo puntual, `read` directo está bien.
+
+### Engram (`engram`)
+
+Es la **memoria persistente** entre sesiones.
+
+- Antes de decidir algo importante: `mem_context` (sesiones recientes) + `mem_search` (decisiones/bugs previos ya resueltos).
+- Después de completar trabajo significativo: `mem_save` con formato **What / Why / Where / Learned** — el título debe ser buscable.
+- Al cerrar sesión: `mem_session_summary` con la estructura Goal / Instructions / Discoveries / Accomplished / Next Steps / Relevant Files.
+
+Si Engram no responde, el agente sigue trabajando pero **pierde el contexto histórico** — no inventa memoria propia, lo deja explícito en el mensaje al usuario.
+
+### Orden de invocación
+
+1. `mem_context` → saber qué se hizo antes
+2. `mem_search` → ver si esto ya se resolvió
+3. `codegraph_explore` → entender el código actual
+4. `health_check` → confirmar que las 3 MCP están vivas
+5. Recién entonces: `start_request` del controller
 
 ## Seguridad
 

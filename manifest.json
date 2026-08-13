@@ -31,10 +31,17 @@
             "file": "assets/extensions/commands.ts",
             "description": "Comando PiStack: commands",
             "version": "0.0.15",
-            "sha256": "1c134c425b1fb50610d34e58291bcf5110689b8ede58e98e2b20a4e3fd1a1d02"
+            "sha256": "90d54b85ca4b49afad3f5dc653a9e7c8b43fb686faba8630b6af59daf6b74a2b"
         }
     ],
     "skills": [
+        {
+            "name": "handling-provider-errors",
+            "file": "assets/skills/handling-provider-errors/SKILL.md",
+            "description": "Skill: handling-provider-errors",
+            "version": "0.0.15",
+            "sha256": "2ec16d6a65dad4ade0eb61ab148f91a206fc0e3942432cf4d0ef8c4f3279e28a"
+        },
         {
             "name": "using-git-worktrees",
             "file": "assets/skills/using-git-worktrees/SKILL.md",
